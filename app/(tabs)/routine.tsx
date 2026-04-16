@@ -1,10 +1,11 @@
 import { MOCK_ROUTINE, RoutineItem } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
+import { useProfile } from '@/hooks/useProfile';
+import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
+    ScrollView, Share, StyleSheet,
     Text,
     TouchableOpacity,
     View
@@ -99,6 +100,8 @@ function RoutineCard({
 export default function RoutineScreen() {
   const [items, setItems] = useState<RoutineItem[]>(MOCK_ROUTINE);
   const [activeTab, setActiveTab] = useState<'today' | 'week' | 'badges'>('today');
+  const [profile] = useProfile();
+  const [lastReportSent, setLastReportSent] = useStoredState<string | null>(STORAGE_KEYS.LAST_REPORT_SENT, null);
 
   const doneCount = items.filter((i) => i.done).length;
   const totalCount = items.length;
@@ -120,6 +123,33 @@ export default function RoutineScreen() {
         return { ...item, current: next, done: next >= item.max };
       })
     );
+  }
+
+  async function handleShareReport() {
+    const bodyLines = [
+      `ElderEase Weekly Report for ${profile.name}`,
+      `Caregiver: ${profile.caregiverName}`,
+      '',
+      `Routine score: ${score}%`,
+      `Completed: ${doneCount}/${totalCount} tasks`,
+      '',
+      'Daily tasks:',
+      ...items.map((item) => `• ${item.label}: ${item.done ? 'Done' : 'Pending'}`),
+      '',
+      'Keep up the great work!',
+    ];
+
+    const shareText = bodyLines.join('\n');
+
+    try {
+      await Share.share({
+        title: `Weekly report — ${profile.name}`,
+        message: shareText,
+      });
+      setLastReportSent(new Date().toISOString());
+    } catch (error) {
+      console.warn('Share report failed:', error);
+    }
   }
 
   function getScoreLabel(): string {
@@ -247,10 +277,26 @@ export default function RoutineScreen() {
 
             <View style={styles.reportCard}>
               <Ionicons name="document-text-outline" size={20} color={Colors.primary} />
-              <Text style={styles.reportText}>
-                Your caregiver received your weekly report on Sunday. Keep up the good work!
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reportText}>
+                  Weekly report ready to share with {profile.caregiverName}.
+                </Text>
+                {lastReportSent ? (
+                  <Text style={styles.reportSubText}>
+                    Last sent: {new Date(lastReportSent).toLocaleDateString('en-IN', {
+                      weekday: 'short',
+                      day: 'numeric',
+                      month: 'short',
+                    })}
+                  </Text>
+                ) : (
+                  <Text style={styles.reportSubText}>No report sent yet.</Text>
+                )}
+              </View>
             </View>
+            <TouchableOpacity style={styles.reportButton} onPress={handleShareReport} activeOpacity={0.85}>
+              <Text style={styles.reportButtonText}>Share Weekly Report</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -562,6 +608,25 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.primaryDark,
     lineHeight: 20,
+  },
+  reportSubText: {
+    fontSize: FontSizes.xs,
+    color: Colors.primaryMid,
+    marginTop: Spacing.xs,
+  },
+  reportButton: {
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.primary,
+    borderRadius: Radii.lg,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportButtonText: {
+    color: '#fff',
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
 
   // Badges

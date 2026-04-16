@@ -16,6 +16,22 @@ export interface Medication {
   instructions?: string;
 }
 
+export interface UserProfile {
+  name: string;
+  caregiverName: string;
+  caregiverPhone: string;
+  remindersEnabled: boolean;
+  reminderLeadMinutes: number;
+}
+
+export const DEFAULT_USER_PROFILE: UserProfile = {
+  name: 'Mr. Singh',
+  caregiverName: 'Priya Singh',
+  caregiverPhone: '+91 98765 43210',
+  remindersEnabled: true,
+  reminderLeadMinutes: 30,
+};
+
 export interface RoutineItem {
   id: string;
   label: string;

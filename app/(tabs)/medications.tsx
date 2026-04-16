@@ -1,3 +1,4 @@
+import { useMedications } from '@/hooks/useMedications';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
@@ -11,7 +12,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { Medication, MedStatus, MOCK_MEDICATIONS } from '../../constants/data';
+import { Medication, MedStatus } from '../../constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
 // import { Colors, FontSizes, FontWeights, Spacing, Radii, Shadows } from '@/constants/theme';
 // import { MOCK_MEDICATIONS, Medication, MedStatus } from '@/constants/data';
@@ -99,7 +100,7 @@ function MedCard({
 }
 
 export default function MedicationsScreen() {
-  const [meds, setMeds] = useState<Medication[]>(MOCK_MEDICATIONS);
+  const { meds, addMedication, markTaken, deleteMed, loading } = useMedications();
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<MedStatus | 'all'>('all');
 
@@ -110,6 +111,8 @@ export default function MedicationsScreen() {
   const [newPurpose, setNewPurpose] = useState('');
   const [selectedColor, setSelectedColor] = useState(PILL_COLORS[0]);
 
+  if (loading) return null;
+
   const takenCount = meds.filter((m) => m.status === 'taken').length;
   const totalCount = meds.length;
   const adherence = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
@@ -117,16 +120,14 @@ export default function MedicationsScreen() {
   const filtered = filter === 'all' ? meds : meds.filter((m) => m.status === filter);
 
   function handleMarkTaken(id: string) {
-    setMeds((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, status: 'taken', streak: m.streak + 1 } : m))
-    );
+    markTaken(id);
   }
 
   function handleDelete(id: string) {
-    setMeds((prev) => prev.filter((m) => m.id !== id));
+    deleteMed(id);
   }
 
-  function handleAddMed() {
+  async function handleAddMed() {
     if (!newName.trim() || !newTime.trim()) {
       Alert.alert('Missing Info', 'Please enter at least a name and time.');
       return;
@@ -142,7 +143,7 @@ export default function MedicationsScreen() {
       purpose: newPurpose.trim() || 'As prescribed',
       streak: 0,
     };
-    setMeds((prev) => [...prev, newMed]);
+    await addMedication(newMed);
     setNewName('');
     setNewDosage('');
     setNewTime('');

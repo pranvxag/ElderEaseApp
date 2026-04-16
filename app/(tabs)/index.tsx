@@ -1,5 +1,7 @@
 // import { HEALTH_TIPS, MOCK_MEDICATIONS, MOCK_ROUTINE } from '@/constants/data';
-import { HEALTH_TIPS, MOCK_MEDICATIONS, MOCK_ROUTINE } from '../../constants/data';
+import { useMedications } from '@/hooks/useMedications';
+import { useProfile } from '@/hooks/useProfile';
+import { HEALTH_TIPS, MOCK_ROUTINE } from '../../constants/data';
 // import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -34,26 +36,25 @@ function getTodayString(): string {
 }
 
 export default function HomeScreen() {
+  const [profile, , profileLoading] = useProfile();
+  const { takenCount, totalMeds, upcomingMeds, loading } = useMedications();
+
+  if (loading || profileLoading) return null; // or a spinner
   const greeting = getGreeting();
   const todayStr = getTodayString();
-  console.log("HEALTH_TIPS:", HEALTH_TIPS);
-  // const tip = HEALTH_TIPS[Math.floor(Math.random() * HEALTH_TIPS.length)];
+
+  const routinePercent = MOCK_ROUTINE.length > 0
+    ? Math.round((MOCK_ROUTINE.filter((item) => item.done).length / MOCK_ROUTINE.length) * 100)
+    : 0;
+
   const tip = Array.isArray(HEALTH_TIPS) && HEALTH_TIPS.length > 0
-  ? HEALTH_TIPS[Math.floor(Math.random() * HEALTH_TIPS.length)]
-  : {
-      tip: "Stay hydrated and take your medicines on time.",
-      category: "General",
-      icon: "heart",
-      color: Colors.primary,
-    };
-
-  const takenCount = MOCK_MEDICATIONS.filter((m) => m.status === 'taken').length;
-  const totalMeds = MOCK_MEDICATIONS.length;
-  const routineDone = MOCK_ROUTINE.filter((r) => r.done).length;
-  const totalRoutine = MOCK_ROUTINE.length;
-  const routinePercent = Math.round((routineDone / totalRoutine) * 100);
-
-  const upcomingMeds = MOCK_MEDICATIONS.filter((m) => m.status === 'upcoming');
+    ? HEALTH_TIPS[Math.floor(Math.random() * HEALTH_TIPS.length)]
+    : {
+        tip: "Stay hydrated and take your medicines on time.",
+        category: "General",
+        icon: "heart",
+        color: Colors.primary,
+      };
 
   return (
     <ScrollView
@@ -67,7 +68,7 @@ export default function HomeScreen() {
       <View style={styles.banner}>
         <View style={styles.bannerLeft}>
           <Text style={styles.greeting}>{greeting}! 🌟</Text>
-          <Text style={styles.userName}>Mr. Singh</Text>
+          <Text style={styles.userName}>{profile.name}</Text>
           <Text style={styles.date}>{todayStr}</Text>
         </View>
         <View style={styles.bannerRight}>
