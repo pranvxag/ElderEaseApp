@@ -126,7 +126,7 @@ export async function scheduleAllReminders(
 }
 
 // ── Cancel ALL scheduled notifications (e.g. on logout / reset) ─────────────
-// ── Cancel ALL scheduled notifications (e.g. on logout / reset) ─────────────
+
 export async function cancelAllReminders(): Promise<void> {
   if (Platform.OS === 'web') {
     return;
