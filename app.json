@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "eldereaseapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -18,9 +17,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "ElderEase.Pranavgale"
+      "package": "com.pranavgale.elderease"
     },
     "web": {
       "output": "static",

@@ -5,10 +5,12 @@ import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    ScrollView, Share, StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 const BADGES = [
