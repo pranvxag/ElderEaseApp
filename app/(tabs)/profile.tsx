@@ -11,6 +11,7 @@ export default function ProfileScreen() {
   const [caregiverPhone, setCaregiverPhone] = useState('');
   const [reminderLeadMinutes, setReminderLeadMinutes] = useState('30');
   const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [voiceConsent, setVoiceConsent] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -19,6 +20,7 @@ export default function ProfileScreen() {
       setCaregiverPhone(profile.caregiverPhone);
       setReminderLeadMinutes(profile.reminderLeadMinutes.toString());
       setRemindersEnabled(profile.remindersEnabled);
+      setVoiceConsent(!!profile.voiceConsent);
     }
   }, [profile, loading]);
 
@@ -34,6 +36,7 @@ export default function ProfileScreen() {
       caregiverPhone: caregiverPhone.trim(),
       reminderLeadMinutes: Number(reminderLeadMinutes) || 30,
       remindersEnabled,
+      voiceConsent,
     });
 
     Alert.alert('Saved', 'Your profile settings have been updated.');
@@ -48,7 +51,7 @@ export default function ProfileScreen() {
       <Text style={styles.title}>Profile Settings</Text>
       <Text style={styles.subtitle}>Manage your elder profile, caregiver contact, and reminder preferences.</Text>
 
-      <Text style={styles.label}>Elder's Name</Text>
+      <Text style={styles.label}>Elder{"'"}s Name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Mr. Singh" placeholderTextColor={Colors.textMuted} />
 
       <Text style={styles.label}>Caregiver Name</Text>
@@ -73,6 +76,14 @@ export default function ProfileScreen() {
           <Text style={styles.helpText}>If disabled, local medication notifications will not be scheduled.</Text>
         </View>
         <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} thumbColor={remindersEnabled ? Colors.primary : Colors.textMuted} />
+      </View>
+
+      <View style={styles.switchRow}>
+        <View>
+          <Text style={styles.label}>Allow voice assistant calls</Text>
+          <Text style={styles.helpText}>Enable short voice check-ins (audio will be recorded/transcribed with your consent).</Text>
+        </View>
+        <Switch value={voiceConsent} onValueChange={setVoiceConsent} thumbColor={voiceConsent ? Colors.primary : Colors.textMuted} />
       </View>
 
       <TouchableOpacity style={styles.button} onPress={handleSave} activeOpacity={0.8}>

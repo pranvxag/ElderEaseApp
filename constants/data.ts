@@ -22,6 +22,7 @@ export interface UserProfile {
   caregiverPhone: string;
   remindersEnabled: boolean;
   reminderLeadMinutes: number;
+  voiceConsent?: boolean;
 }
 
 export const DEFAULT_USER_PROFILE: UserProfile = {
@@ -30,7 +31,18 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
   caregiverPhone: '+91 98765 43210',
   remindersEnabled: true,
   reminderLeadMinutes: 30,
+  voiceConsent: false,
 };
+
+export interface BloodSugarEntry {
+  id: string;
+  value: number;
+  unit: 'mg/dL' | 'mmol/L';
+  timestamp: string; // ISO
+  source?: 'ai-call' | 'manual' | 'device';
+  transcript?: string;
+  note?: string;
+}
 
 export interface RoutineItem {
   id: string;

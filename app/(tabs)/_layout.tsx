@@ -1,5 +1,7 @@
+import AICallLogo from '@/components/icons/AICallLogo';
+import ScanLogo from '@/components/icons/ScanLogo';
 import { Colors, FontSizes } from '@/constants/theme';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs, useRouter } from 'expo-router';
 import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -71,6 +73,28 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="scan"
+        options={{
+          title: 'Scan',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
+              <ScanLogo size={28} bgColor="transparent" color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="ai-call"
+        options={{
+          title: 'AI Call',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
+              <AICallLogo size={28} bgColor="transparent" color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           href: null,
@@ -90,6 +114,8 @@ export default function TabLayout() {
           tabBarActiveTintColor: Colors.emergency,
         }}
       />
+      <Tabs.Screen name="scan-prescription" options={{ href: null }} />
+      <Tabs.Screen name="upload-report" options={{ href: null }} />
     </Tabs>
   );
 }

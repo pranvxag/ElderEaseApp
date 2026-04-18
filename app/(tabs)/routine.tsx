@@ -2,7 +2,7 @@ import { MOCK_ROUTINE, RoutineItem } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useProfile } from '@/hooks/useProfile';
 import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useState } from 'react';
 import {
   ScrollView,
@@ -234,7 +234,7 @@ export default function RoutineScreen() {
         {/* WEEKLY TAB */}
         {activeTab === 'week' && (
           <View style={styles.padded}>
-            <Text style={styles.sectionTitle}>This Week's Performance</Text>
+            <Text style={styles.sectionTitle}>This Week{"'"}s Performance</Text>
             <View style={styles.barChart}>
               {WEEK_DATA.map((d, i) => {
                 const isToday = i === new Date().getDay() - 1;

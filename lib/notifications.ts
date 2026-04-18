@@ -152,3 +152,44 @@ export async function sendStreakReminderNow(missedMedName: string): Promise<void
     trigger: null, // fires immediately
   });
 }
+
+// ── Send an immediate alert for abnormal blood sugar readings ───────────────
+export async function sendBloodSugarAlert(payload: {
+  value: number;
+  unit?: string;
+  timestamp?: string;
+}): Promise<void> {
+  if (Platform.OS === 'web') {
+    console.warn('Blood sugar alerts not supported on web.');
+    return;
+  }
+
+  const { value, unit } = payload;
+  let title = `Blood sugar: ${value}${unit ? ` ${unit}` : ''}`;
+  let body = '';
+
+  if (value < 70) {
+    title = 'Low blood sugar';
+    body = `Reading ${value}${unit ? ` ${unit}` : ''}. Consider glucose or medical help.`;
+  } else if (value >= 180) {
+    title = 'High blood sugar';
+    body = `Reading ${value}${unit ? ` ${unit}` : ''}. Consider contacting a provider.`;
+  } else {
+    // no alert for normal ranges
+    return;
+  }
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: 'default',
+        ...(Platform.OS === 'android' && { channelId: 'medication-reminders' }),
+      },
+      trigger: null,
+    });
+  } catch (err) {
+    console.warn('Failed to send blood sugar alert', err);
+  }
+}

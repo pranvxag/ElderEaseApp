@@ -1,5 +1,5 @@
 import { useMedications } from '@/hooks/useMedications';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useState } from 'react';
 import {
     Alert,
@@ -157,7 +157,7 @@ export default function MedicationsScreen() {
       {/* ── Adherence Summary ── */}
       <View style={styles.summaryBar}>
         <View style={styles.summaryLeft}>
-          <Text style={styles.summaryTitle}>Today's Adherence</Text>
+          <Text style={styles.summaryTitle}>Today{"'"}s Adherence</Text>
           <Text style={styles.summarySubtitle}>
             {takenCount} of {totalCount} medicines taken
           </Text>

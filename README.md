@@ -1,25 +1,34 @@
 # ElderEase App 👴👵
 
+> Release: `V2.2.0-CS-01-18/02` — updated April 18, 2026
+>
 This is an [Expo](https://expo.dev) project built with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ---
 
-## What's New in V2.0.0 (compared to V1.1.0)
+## What's New in V2.2.0-CS-01-18/02
 
 ### New Screens
 
 | Screen | Description |
 |---|---|
 | **Onboarding** (`app/onboarding.tsx`) | First-time setup screen where the elder's name, caregiver name & phone number, reminder lead time, and notification preferences are collected before entering the app. |
-| **Profile** (`app/(tabs)/profile.tsx`) | New dedicated tab that lets users update their elder profile, caregiver contact details, reminder lead time, and toggle notifications on/off at any time. |
+| **Profile** (`app/(tabs)/profile.tsx`) | Dedicated profile tab for updating elder profile details, caregiver contact information, reminder lead time, and notification settings at any time. |
+| **Scan** (`app/(tabs)/scan.tsx`) | New scan hub for uploading or scanning prescriptions and blood reports using camera or image picker. |
+| **Scan Prescription** (`app/(tabs)/scan-prescription.tsx`) | Scan or paste prescription text, parse medication details, and create medication reminders automatically. |
+| **Upload Report** (`app/(tabs)/upload-report.tsx`) | Upload lab report images or paste OCR text, then extract and save blood sugar values from reports. |
+| **AI Call** (`app/(tabs)/ai-call.tsx`) | Voice prompt and transcript parsing demo for capturing blood sugar readings. |
+| **Emergency** (`app/(tabs)/emergency.tsx`) | Emergency screen now surfaces the latest blood sugar reading and offers a quick path back to the AI health call flow. |
 
 ### New Features
 
-- **Local Push Notifications** — Medication reminders are now scheduled as daily repeating local notifications via `expo-notifications`. A "streak at risk" nudge is also sent when a dose is missed. Notifications are handled in `lib/notifications.ts`.
-- **AsyncStorage Persistence** — All app data (medications, routine progress, profile, notification mapping) is now persisted across app restarts using `@react-native-async-storage/async-storage`. The `useStoredState` hook in `hooks/useStorage.ts` provides a simple `useState`-like API with automatic persistence.
-- **Medication Management Hook** — `hooks/useMedications.ts` centralises all medication state: adding, marking as taken, deleting, and automatically scheduling/cancelling the corresponding notification reminders.
-- **User Profile Data Model** — A new `UserProfile` type and `DEFAULT_USER_PROFILE` constant were added to `constants/data.ts`, along with `useProfile.ts` for reading and updating profile data.
-- **EAS Build Configuration** — `eas.json` added to support building the app with [EAS Build](https://docs.expo.dev/build/introduction/).
+- **Scan + upload workflow** — Added a central `Scan` hub that supports prescription scanning and report upload with camera fallback and image picker integration.
+- **Prescription parsing** — Automatically parse medicine text from prescriptions and create medication reminders through `hooks/useMedications.ts`.
+- **Report value extraction** — Extract blood sugar values from uploaded lab reports using the new `Upload Report` flow.
+- **AI-assisted health entry** — Added an AI call demo that uses `expo-speech` to prompt for health data, parses transcript text, and saves blood sugar readings.
+- **Persistent health data** — Added `hooks/useHealthData.ts` to store blood sugar entries, expose the latest reading, and trigger alerts for out-of-range values.
+- **Emergency screen enhancement** — Emergency tab now shows the most recent health entry and includes a fast re-check route to the AI call screen.
+- **Updated tab navigation** — Added `Scan` and `AI Call` tabs while keeping prescription/report flows hidden until needed.
 
 ### New Dependencies
 
@@ -28,10 +37,12 @@ This is an [Expo](https://expo.dev) project built with [`create-expo-app`](https
 | `@react-native-async-storage/async-storage` | Persistent local storage |
 | `expo-notifications` | Local push notification scheduling |
 | `expo-device` | Detects whether the app is running on a physical device (required for push notifications) |
+| `expo-image-picker` | Upload and camera scanning support for reports and prescriptions |
+| `expo-speech` | Voice prompt support for the AI call demo |
 
 ### Summary
 
-V1.1.0 was a UI-only prototype — data was not persisted and there were no notifications. V2.0.0 adds a full data-persistence layer, a local notification system for medication reminders, an onboarding flow, and a profile management screen, making the app functional end-to-end.
+V2.2.0-CS-01-18/02 builds on the existing medication reminder and profile foundation by introducing intelligent elder care workflows: scan and upload support for prescriptions and lab reports, AI-assisted health entry, and persistent blood sugar tracking. This release expands the app from reminders to more complete care capture and diagnostic workflows.
 
 ---
 
