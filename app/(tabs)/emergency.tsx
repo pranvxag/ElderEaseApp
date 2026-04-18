@@ -1,6 +1,8 @@
 import { EmergencyContact, MOCK_CONTACTS } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
-import { Ionicons } from '@expo/vector-icons';
+import { useHealthData } from '@/hooks/useHealthData';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     Alert,
@@ -53,10 +55,11 @@ function ContactCard({
 }
 
 export default function EmergencyScreen() {
-  const [contacts, setContacts] = useState<EmergencyContact[]>(MOCK_CONTACTS);
+  const [contacts] = useState<EmergencyContact[]>(MOCK_CONTACTS);
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosCountdown, setSosCountdown] = useState(5);
-  const [sosCancelled, setSosCancelled] = useState(false);
+
+  const { latest } = useHealthData();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -71,7 +74,7 @@ export default function EmergencyScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, []);
+  }, [pulseAnim]);
 
   function handleSOSPress() {
     setSosCountdown(5);
@@ -133,6 +136,19 @@ export default function EmergencyScreen() {
             For life-threatening emergencies, call <Text style={styles.warningBold}>112</Text> directly.
           </Text>
         </View>
+
+        {/* ── Latest Reading Strip (from AI call / manual) ── */}
+        {/** show latest entry if present **/}
+        {latest ? (
+          <View style={styles.latestStrip}>
+            <Text style={styles.latestText}>
+              Latest sugar: {latest.value} {latest.unit} • {new Date(latest.timestamp).toLocaleString()}
+            </Text>
+            <TouchableOpacity style={styles.recheckBtn} onPress={() => router.push('/(tabs)/ai-call')}>
+              <Text style={styles.recheckText}>Re-check</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* ── SOS Button Section ── */}
         <View style={styles.sosSection}>
@@ -559,4 +575,24 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.textPrimary,
   },
+  latestStrip: {
+    backgroundColor: Colors.cardBg,
+    padding: Spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  latestText: {
+    color: Colors.textPrimary,
+    fontWeight: FontWeights.bold,
+  },
+  recheckBtn: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Radii.full,
+  },
+  recheckText: { color: Colors.primary, fontWeight: FontWeights.semibold },
 });

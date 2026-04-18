@@ -60,7 +60,7 @@ export default function OnboardingScreen() {
       <Text style={styles.title}>Welcome to ElderEase</Text>
       <Text style={styles.subtitle}>Set up your profile and caregiver connection so your reminders work better.</Text>
 
-      <Text style={styles.label}>Elder's Name</Text>
+      <Text style={styles.label}>Elder{"'"}s Name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Mr. Singh" placeholderTextColor={Colors.textMuted} />
 
       <Text style={styles.label}>Caregiver Name</Text>

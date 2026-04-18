@@ -1,23 +1,23 @@
 // import { HEALTH_TIPS, MOCK_MEDICATIONS, MOCK_ROUTINE } from '@/constants/data';
+import { useHealthData } from '@/hooks/useHealthData';
 import { useMedications } from '@/hooks/useMedications';
 import { useProfile } from '@/hooks/useProfile';
 import { HEALTH_TIPS, MOCK_ROUTINE } from '../../constants/data';
 // import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
-import { Ionicons } from '@expo/vector-icons';
+import AICallLogo from '@/components/icons/AICallLogo';
+import ScanLogo from '@/components/icons/ScanLogo';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-  Dimensions,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
-
-const { width } = Dimensions.get('window');
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -37,6 +37,7 @@ function getTodayString(): string {
 
 export default function HomeScreen() {
   const [profile, , profileLoading] = useProfile();
+  const { latest } = useHealthData();
   const { takenCount, totalMeds, upcomingMeds, loading } = useMedications();
 
   if (loading || profileLoading) return null; // or a spinner
@@ -130,6 +131,8 @@ export default function HomeScreen() {
       </View>
 
       {/* ── Upcoming Medicines ── */}
+
+      {/* Quick actions moved to Scan screen */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Upcoming Medicines</Text>
@@ -166,7 +169,7 @@ export default function HomeScreen() {
       {/* ── Today's Routine Snapshot ── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Routine</Text>
+          <Text style={styles.sectionTitle}>Today{"'"}s Routine</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/routine')}>
             <Text style={styles.sectionLink}>View all →</Text>
           </TouchableOpacity>
@@ -201,7 +204,7 @@ export default function HomeScreen() {
 
       {/* ── Daily Health Tip ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Today's Health Tip</Text>
+        <Text style={styles.sectionTitle}>Today{"'"}s Health Tip</Text>
         <View style={[styles.tipCard, { borderLeftColor: tip.color }]}>
           <View style={[styles.tipIconBg, { backgroundColor: tip.color + '20' }]}>
             <Ionicons name={tip.icon as any} size={24} color={tip.color} />
@@ -223,7 +226,16 @@ export default function HomeScreen() {
         <View style={styles.emergencyBannerText}>
           <Text style={styles.emergencyBannerTitle}>Need Help?</Text>
           <Text style={styles.emergencyBannerSub}>Tap to call your emergency contact instantly</Text>
+          <Text style={styles.emergencyLatest}>
+            Latest BG: {latest ? `${latest.value} ${latest.unit}` : '—'}
+          </Text>
         </View>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/scan')} style={{ marginRight: 8 }}>
+          <ScanLogo size={28} bgColor="transparent" color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/ai-call')} style={{ marginRight: 8 }}>
+          <AICallLogo size={28} bgColor="transparent" color="#fff" />
+        </TouchableOpacity>
         <Ionicons name="chevron-forward" size={24} color="#fff" />
       </TouchableOpacity>
 
@@ -539,4 +551,11 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: 'rgba(255,255,255,0.85)',
   },
+  emergencyLatest: {
+    fontSize: FontSizes.sm,
+    color: 'rgba(255,255,255,0.95)',
+    marginTop: 4,
+    fontWeight: FontWeights.semibold,
+  },
+  // quick actions moved to Scan screen
 });
