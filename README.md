@@ -70,6 +70,43 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Development Build (Android, EAS Cloud)
+
+Use this when you want full `expo-notifications` behavior on Android (Expo Go has SDK 53+ limitations for remote notification APIs).
+
+1. Install dependencies
+
+   ```bash
+   npm install
+   ```
+
+2. Log in to Expo account (first time only)
+
+   ```bash
+   npx eas login
+   ```
+
+3. Create an Android development build
+
+   ```bash
+   npm run build:dev:android
+   ```
+
+4. Install the generated build on your Android device (use the EAS install link / QR from build output)
+
+5. Start Metro for dev client from Codespaces
+
+   ```bash
+   npm run dev-client:start
+   ```
+
+6. Open the installed development build app on device, then connect to the running Metro server
+
+Notes:
+
+- Use `npx expo start --tunnel` (or `npm start`) for Expo Go quick testing.
+- Use dev builds for notification behavior that Expo Go does not fully support.
+
 ## Get a fresh project
 
 When you're ready, run:
