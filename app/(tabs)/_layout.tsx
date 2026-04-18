@@ -1,7 +1,7 @@
 import { Colors, FontSizes } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -14,6 +14,8 @@ function TabIcon({ name, color, focused }: { name: IoniconsName; color: string; 
 }
 
 export default function TabLayout() {
+  const router = useRouter();
+
   return (
     <Tabs
       screenOptions={{
@@ -26,6 +28,16 @@ export default function TabLayout() {
         headerTintColor: Colors.textOnPrimary,
         headerTitleStyle: styles.headerTitle,
         headerTitleAlign: 'left',
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/profile')}
+            style={styles.headerProfileButton}
+            accessibilityLabel="Open profile"
+            activeOpacity={0.75}
+          >
+            <Ionicons name="person-circle-outline" size={29} color={Colors.textOnPrimary} />
+          </TouchableOpacity>
+        ),
       }}
     >
       <Tabs.Screen
@@ -61,11 +73,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
+          href: null,
           title: 'Profile',
           headerTitle: 'Profile Settings',
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon name={focused ? 'person' : 'person-outline'} color={color} focused={focused} />
-          ),
         }}
       />
       <Tabs.Screen
@@ -125,5 +135,8 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: '700',
     color: Colors.textOnPrimary,
+  },
+  headerProfileButton: {
+    marginRight: 12,
   },
 });
