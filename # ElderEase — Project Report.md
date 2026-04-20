@@ -1,6 +1,8 @@
 # ElderEase — Project Report
-Release: V2.2.0-CS-01-18/02  
-Generated: 2026-04-18
+Release: WIP — Post V2.2.0 development
+Branch: V2.3.0-CS-01-20/02 (working)
+Status: In development — no production changes yet
+Generated: 2026-04-20
 
 ---
 
@@ -24,6 +26,25 @@ Generated: 2026-04-18
 
 ## Executive summary
 ElderEase is a mobile-first Expo app focused on medication reminders and simple elder-care workflows (scan prescriptions, upload lab reports, voice-assisted health entries, and an emergency flow). This release (V2.2.0-CS-01-18/02) adds scanning/report upload, lightweight AI parsing utilities, persistent blood-sugar tracking, and additional safety/UX flows (AI voice call demo, improved Emergency screen).
+
+-
+---
+
+## Development status & roadmap
+
+- Status: We have shifted to a new development cycle (post V2.2.0). Work is in progress on the `V2.x` line; as of this note, no functional changes have been merged to release.
+- Focus areas (high level):
+  - Add real OCR scanning (on-device + cloud fallbacks) to replace the current manual/paste-edit flow.
+  - Integrate an AI-powered call/parse flow (prototype in simulation mode, then wire to a real LLM endpoint) to improve extraction for prescriptions and lab reports.
+  - Migrate heuristic parsers to a hybrid OCR+AI pipeline using cleaned OCR text as AI input.
+  - Add explicit privacy/consent UI for voice and OCR uploads and document data flows.
+  - Device QA (iOS/Android) for notifications, TTS/STT and camera/scan flows.
+
+### Short roadmap
+1. Prototype OCR integration (local proof-of-concept). 
+2. Prototype AI-call simulation + parsing improvements.
+3. Wire AI provider, add secure secrets handling and opt-in consent flows.
+4. Beta device testing and accessibility audit.
 
 ---
 
