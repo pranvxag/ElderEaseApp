@@ -81,6 +81,39 @@ Primary screens:
 - Scan Prescription (`app/(tabs)/scan-prescription.tsx`): pick or scan image, paste/edit OCR text, parse with `parsePrescription`, create medication reminders via `useMedications`.
 - Upload Report (`app/(tabs)/upload-report.tsx`): pick or scan image, paste/edit OCR text, extract lab values via `parseLabReport`, save blood-sugar entries via `useHealthData`.
 - AI Call (`app/(tabs)/ai-call.tsx`): TTS prompt (Hindi example), editable transcript, parse numeric sugar via `extractSugarFromText`, save as health entry.
+
+  ### AI Call feature structure
+  - File: `app/(tabs)/ai-call.tsx`
+  - Purpose: full in-app simulated health call experience for medication reminders and blood sugar checks.
+  - Integrations:
+    - `useHealthData` — save blood sugar readings.
+    - `useMedications` — read upcoming meds and mark taken.
+    - `expo-speech` — TTS for voice prompts.
+    - Groq chat API — `llama-3.3-70b-versatile` for AI agent responses.
+  - UI states:
+    1. Idle selection screen.
+    2. Incoming call screen.
+    3. Connected call chat screen.
+    4. Call summary screen.
+  - Call modes:
+    - `meds` — medication reminder flow.
+    - `sugar` — blood sugar check flow.
+  - Key functions:
+    - `buildSystemPrompt(mode, medList)` — agent prompt builder.
+    - `callGroqAgent(systemPrompt, history)` — sends chat request.
+    - `extractSugarTag(text)` — parses `SUGAR_VALUE:<number>`.
+    - `cleanAgentText(text)` — strips the sugar tag from display text.
+    - `startCallWithMode(mode)` — begins incoming call flow.
+    - `acceptCall()` — connects the call and sends the first AI prompt.
+    - `declineCall()` / `endCall()` — exits incoming or active call.
+    - `sendMessage()` — sends user input to the AI and appends reply.
+    - `saveSugar()` — saves parsed sugar reading into health data.
+    - `handleMarkAllTaken()` — marks all upcoming meds as taken and sends confirmation.
+  - Supporting UI:
+    - `Waveform` — animated bars while agent is typing.
+    - `TypingDots` — animated typing indicator.
+    - call controls: mute, speaker, end call, quick reply chips.
+
 - Emergency (`app/(tabs)/emergency.tsx`): warning banner, latest BG strip (from `useHealthData.latest`), large pulsating SOS button with 5s countdown and call flow, quick actions (call 112/108/primary), emergency contacts list.
 - Profile (`app/(tabs)/profile.tsx`): view/edit profile fields, reminder lead time, toggles for reminders and voice consent.
 
