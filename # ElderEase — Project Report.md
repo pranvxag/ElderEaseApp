@@ -1,7 +1,7 @@
 # ElderEase — Project Report
-Release: WIP — Post V2.2.0 development
-Branch: V2.3.0-CS-01-20/02 (working)
-Status: In development — no production changes yet
+Release: V2.3.0-CS-01-20/04
+Branch: V2.2.0-CS-01-18/02 (working)
+Status: In development — version updated for today’s work
 Generated: 2026-04-20
 
 ---
@@ -17,6 +17,7 @@ Generated: 2026-04-20
 - Notifications & scheduling
 - Design language & UI/UX decisions
 - Data model & storage keys
+- Project structure
 - Build, run & platform notes
 - Limitations & privacy considerations
 - Recommendations & next steps
@@ -204,3 +205,70 @@ Persistent keys (`hooks/useStorage.ts`):
 - Install:
 ```bash
 npm install
+```
+
+## Project structure
+- `/app`
+  - `_layout.tsx`
+  - `modal.tsx`
+  - `onboarding.tsx`
+  - `(tabs)/_layout.tsx`
+  - `(tabs)/ai-call.tsx`
+  - `(tabs)/emergency.tsx`
+  - `(tabs)/index.tsx`
+  - `(tabs)/medications.tsx`
+  - `(tabs)/profile.tsx`
+  - `(tabs)/routine.tsx`
+  - `(tabs)/scan-prescription.tsx`
+  - `(tabs)/scan.tsx`
+  - `(tabs)/upload-report.tsx`
+- `/components`
+  - `external-link.tsx`
+  - `haptic-tab.tsx`
+  - `hello-wave.tsx`
+  - `parallax-scroll-view.tsx`
+  - `themed-text.tsx`
+  - `themed-view.tsx`
+  - `icons/AICallLogo.tsx`
+  - `icons/ScanLogo.tsx`
+  - `icons/UploadReportLogo.tsx`
+  - `ui/collapsible.tsx`
+  - `ui/icon-symbol.ios.tsx`
+  - `ui/icon-symbol.tsx`
+- `/constants`
+  - `data.ts`
+  - `theme.ts`
+- `/hooks`
+  - `use-color-scheme.ts`
+  - `use-color-scheme.web.ts`
+  - `use-theme-color.ts`
+  - `useHealthData.ts`
+  - `useMedications.ts`
+  - `useProfile.ts`
+  - `useStorage.ts`
+- `/lib`
+  - `notifications.ts`
+  - `ai/parse.ts`
+  - `ai/parsePrescription.ts`
+  - `ai/parseReport.ts`
+- `/assets/images`
+  - `android-icon-background.png`
+  - `android-icon-foreground.png`
+  - `android-icon-monochrome.png`
+  - `favicon.png`
+  - `icon.png`
+  - `partial-react-logo.png`
+  - `react-logo.png`
+  - `react-logo@2x.png`
+  - `react-logo@3x.png`
+  - `splash-icon.png`
+- `/scripts/reset-project.js`
+- project metadata: `app.json`, `package.json`, `tsconfig.json`, `babel.config.js`, `eas.json`, `eslint.config.js`, `expo-env.d.ts`, `README.md`
+
+## Today’s changes (v2.3.0-CS-01-20/04)
+- Updated the AI call feature in `app/(tabs)/ai-call.tsx` with a modern in-app call UI and enhanced simulated health call workflow.
+- Added full project structure documentation to this report.
+- Revised report metadata for today’s version and development status.
+- Continued work on turn-based AI audio pipeline, Twilio integration, and device/privacy QA.
+
+## Limitations & privacy considerations
