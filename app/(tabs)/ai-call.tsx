@@ -72,7 +72,7 @@ Rules:
 }
 
 // ─── Groq API ─────────────────────────────────────────────────────────────────
-const GROQ_API_KEY = 'REMOVED_KEY';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 async function callGroqAgent(
   systemPrompt: string,
