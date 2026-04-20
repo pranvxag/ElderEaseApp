@@ -26,9 +26,8 @@ Generated: 2026-04-20
 ---
 
 ## Executive summary
-ElderEase is a mobile-first Expo app focused on medication reminders and simple elder-care workflows (scan prescriptions, upload lab reports, voice-assisted health entries, and an emergency flow). This release (V2.2.0-CS-01-18/02) adds scanning/report upload, lightweight AI parsing utilities, persistent blood-sugar tracking, and additional safety/UX flows (AI voice call demo, improved Emergency screen).
+ElderEase is a mobile-first Expo app focused on medication reminders and simple elder-care workflows (scan prescriptions, upload lab reports, voice-assisted health entries, and an emergency flow). Current development is targeted at v2.3.0-CS-01-20/04 and includes a modern in-app AI call experience for medication reminders alongside ongoing OCR and AI parsing improvements.
 
--
 ---
 
 ## Development status & roadmap
@@ -55,6 +54,7 @@ ElderEase is a mobile-first Expo app focused on medication reminders and simple 
 - Prescription parsing → automatic medication creation.
 - Report parsing → extract blood-sugar values and persist readings.
 - AI call demo → TTS prompt, editable transcript, numeric extraction and saving.
+- Ongoing v2.3.0 work: modern full-screen AI health call UI and richer simulated call flow.
 - Persistent health data via a local store and out-of-range push alerts.
 - Tab navigation updated to include Scan and AI Call; prescription/report screens hidden from tab bar.
 
