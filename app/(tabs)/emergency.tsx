@@ -1,5 +1,6 @@
-import { EmergencyContact, MOCK_CONTACTS } from '@/constants/data';
+import { EmergencyContact } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
+import { useEmergencyContacts } from '@/hooks/useEmergencyContacts';
 import { useHealthData } from '@/hooks/useHealthData';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
@@ -55,7 +56,7 @@ function ContactCard({
 }
 
 export default function EmergencyScreen() {
-  const [contacts] = useState<EmergencyContact[]>(MOCK_CONTACTS);
+  const [contacts, , contactsLoading] = useEmergencyContacts();
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosCountdown, setSosCountdown] = useState(5);
 
@@ -123,6 +124,10 @@ export default function EmergencyScreen() {
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
+  }
+
+  if (contactsLoading) {
+    return null;
   }
 
   return (

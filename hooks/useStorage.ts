@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   NOTIFICATION_MAP: 'elderease:notification_map', // { medId → notifId }
   USER_PROFILE: 'elderease:user_profile',
   ONBOARDED: 'elderease:onboarded',
+  EMERGENCY_CONTACTS: 'elderease:emergency_contacts',
   LAST_REPORT_SENT: 'elderease:last_report_sent',
   BLOOD_SUGAR_ENTRIES: 'elderease:blood_sugar_entries',
 } as const;

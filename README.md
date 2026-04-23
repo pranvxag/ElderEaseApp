@@ -12,7 +12,7 @@ This is an [Expo](https://expo.dev) project built with [`create-expo-app`](https
 
 | Screen | Description |
 |---|---|
-| **Onboarding** (`app/onboarding.tsx`) | First-time setup screen where the elder's name, caregiver name & phone number, reminder lead time, and notification preferences are collected before entering the app. |
+| **Onboarding** (`app/onboarding.tsx`) | First-time setup screen where the elder's name, caregiver name & phone number, reminder lead time, notification preferences, voice consent, one starter medication, and a primary emergency contact are collected before entering the app. |
 | **Profile** (`app/(tabs)/profile.tsx`) | Dedicated profile tab for updating elder profile details, caregiver contact information, reminder lead time, and notification settings at any time. |
 | **Scan** (`app/(tabs)/scan.tsx`) | New scan hub for uploading or scanning prescriptions and blood reports using camera or image picker. |
 | **Scan Prescription** (`app/(tabs)/scan-prescription.tsx`) | Scan or paste prescription text, parse medication details, and create medication reminders automatically. |
