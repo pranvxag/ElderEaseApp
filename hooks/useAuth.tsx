@@ -88,6 +88,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (code === 'auth/operation-not-supported-in-this-environment') {
           return { ok: false, message: 'Firebase popup sign-in is not supported in this browser environment.' };
         }
+        if (code === 'auth/configuration-not-found') {
+          const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+          if (isLocalhost) {
+            return {
+              ok: false,
+              message:
+                'Firebase OAuth not configured for localhost. Go to Firebase Console > Authentication > Google provider > Add http://localhost:* to authorized redirect URIs.',
+            };
+          }
+          return {
+            ok: false,
+            message: 'Firebase OAuth configuration not found. Configure Google Sign-In in Firebase Console > Authentication.',
+          };
+        }
         return { ok: false, message: `Web sign-in error (${code}): ${message}` };
       }
     }

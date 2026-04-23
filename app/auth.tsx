@@ -1,14 +1,21 @@
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function AuthScreen() {
   const { configured, signInWithGoogle } = useAuth();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
+    setErrorMessage(null);
     const result = await signInWithGoogle();
     if (!result.ok && result.message) {
-      Alert.alert('Sign-in issue', result.message);
+      if (Platform.OS === 'web') {
+        setErrorMessage(result.message);
+      } else {
+        Alert.alert('Sign-in issue', result.message);
+      }
     }
   };
 
@@ -31,6 +38,12 @@ export default function AuthScreen() {
       {!configured && (
         <Text style={styles.helpText}>
           Missing config: add EXPO_PUBLIC_FIREBASE_* and EXPO_PUBLIC_GOOGLE_* variables in your environment.
+        </Text>
+      )}
+
+      {errorMessage && (
+        <Text style={styles.errorText}>
+          {errorMessage}
         </Text>
       )}
     </View>
@@ -76,5 +89,14 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: FontSizes.sm,
     lineHeight: 22,
+  },
+  errorText: {
+    marginTop: Spacing.md,
+    color: '#d32f2f',
+    fontSize: FontSizes.sm,
+    lineHeight: 22,
+    backgroundColor: '#ffebee',
+    padding: Spacing.md,
+    borderRadius: Radii.md,
   },
 });
