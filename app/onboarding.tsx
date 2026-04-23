@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.xl,
     paddingVertical: Spacing.md,
     alignItems: 'center',
-    ...Shadows.button,
+    ...Shadows.strong,
   },
   buttonText: {
     color: '#fff',

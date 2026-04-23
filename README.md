@@ -81,6 +81,55 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Google Auth + Cloud Sync Setup (Firebase)
+
+This app now includes:
+
+- Google account sign-in (`app/auth.tsx`)
+- Cloud sync for profile, medications, emergency contacts, and onboarding state (`hooks/useCloudSync.ts`)
+
+### 1) Add environment values
+
+Copy `.env.example` to `.env` and fill all values:
+
+```bash
+cp .env.example .env
+```
+
+Required keys:
+
+- `EXPO_PUBLIC_FIREBASE_API_KEY`
+- `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+- `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `EXPO_PUBLIC_FIREBASE_APP_ID`
+- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+
+Recommended for native builds:
+
+- `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
+- `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+- `EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID`
+
+### 2) Enable services
+
+- Firebase Authentication → enable **Google** provider
+- Firestore Database → create DB in your preferred region
+
+### 3) Run and test
+
+```bash
+npx expo start --clear
+```
+
+Flow:
+
+1. App opens on `/auth`
+2. Sign in with Google
+3. Complete onboarding
+4. Data syncs to Firestore document: `users/{uid}`
+
 ## Development Build (Android, EAS Cloud)
 
 Use this when you want full `expo-notifications` behavior on Android (Expo Go has SDK 53+ limitations for remote notification APIs).
