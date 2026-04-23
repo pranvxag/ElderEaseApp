@@ -69,6 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Web Google sign-in failed:', error);
         const code = error?.code ?? (error && error.name) ?? 'unknown';
         const message = error?.message ?? String(error);
+        if (code === 'auth/unauthorized-domain') {
+          return {
+            ok: false,
+            message:
+              'This web origin is not authorized in Firebase Auth. Add the current domain to Firebase Console > Authentication > Settings > Authorized domains.',
+          };
+        }
+        if (code === 'auth/popup-blocked') {
+          return { ok: false, message: 'The browser blocked the Google sign-in popup.' };
+        }
+        if (code === 'auth/popup-closed-by-user') {
+          return { ok: false, message: 'The Google sign-in popup closed before authentication completed.' };
+        }
+        if (code === 'auth/cancelled-popup-request') {
+          return { ok: false, message: 'A Google sign-in request is already in progress.' };
+        }
+        if (code === 'auth/operation-not-supported-in-this-environment') {
+          return { ok: false, message: 'Firebase popup sign-in is not supported in this browser environment.' };
+        }
         return { ok: false, message: `Web sign-in error (${code}): ${message}` };
       }
     }
