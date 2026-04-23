@@ -1,9 +1,9 @@
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function AuthScreen() {
-  const { configured, requestReady, signInWithGoogle } = useAuth();
+  const { configured, signInWithGoogle } = useAuth();
 
   const handleGoogleSignIn = async () => {
     const result = await signInWithGoogle();
@@ -20,16 +20,12 @@ export default function AuthScreen() {
       </Text>
 
       <TouchableOpacity
-        style={[styles.button, (!requestReady || !configured) && styles.buttonDisabled]}
+        style={[styles.button, !configured && styles.buttonDisabled]}
         onPress={handleGoogleSignIn}
-        disabled={!requestReady || !configured}
+        disabled={!configured}
         activeOpacity={0.85}
       >
-        {!requestReady ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Continue with Google</Text>
-        )}
+        <Text style={styles.buttonText}>Continue with Google</Text>
       </TouchableOpacity>
 
       {!configured && (
