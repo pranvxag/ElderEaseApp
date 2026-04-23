@@ -1,4 +1,5 @@
 import { auth, hasFirebaseConfig } from '@/lib/firebase';
+import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -27,7 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const redirectUri = makeRedirectUri({ useProxy: true });
+
+  const [request, , promptAsync] = Google.useAuthRequest({
     clientId:
       process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID ??
       process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -35,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     scopes: ['profile', 'email'],
+    redirectUri,
   });
 
   useEffect(() => {
@@ -47,16 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (response?.type !== 'success') return;
-
-    const idToken = response.authentication?.idToken;
-    if (!idToken) return;
-
-    const credential = GoogleAuthProvider.credential(idToken);
-    signInWithCredential(auth, credential).catch((error) => {
-      console.error('Google sign-in failed:', error);
-    });
-  }, [response]);
+    if (request) {
+      console.log('Google redirectUri:', (request as any).redirectUri ?? redirectUri);
+    }
+  }, [request, redirectUri]);
 
   const value = useMemo<AuthContextValue>(() => {
     return {
@@ -78,9 +76,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { ok: false, message: 'Google sign-in is not ready yet. Please retry.' };
         }
 
-        const result = await promptAsync();
+        const result = await promptAsync({ useProxy: true });
         if (result.type === 'success') {
-          return { ok: true };
+          const idToken = result.authentication?.idToken ?? (result.params as any)?.id_token;
+          const accessToken =
+            result.authentication?.accessToken ?? (result.params as any)?.access_token;
+
+          if (!idToken && !accessToken) {
+            return {
+              ok: false,
+              message: 'Google did not return a usable token. Please try again.',
+            };
+          }
+
+          try {
+            const credential = GoogleAuthProvider.credential(idToken ?? null, accessToken ?? null);
+            await signInWithCredential(auth, credential);
+            return { ok: true };
+          } catch (error) {
+            console.error('Google sign-in failed:', error);
+            return {
+              ok: false,
+              message: 'Google account was selected, but Firebase sign-in failed.',
+            };
+          }
         }
         if (result.type === 'cancel') {
           return { ok: false, message: 'Sign-in was cancelled.' };
