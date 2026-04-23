@@ -1,22 +1,18 @@
 import { auth, hasFirebaseConfig } from '@/lib/firebase';
-import { makeRedirectUri } from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
 import {
     signOut as firebaseSignOut,
     GoogleAuthProvider,
     onAuthStateChanged,
     signInWithCredential,
+    signInWithPopup,
     User,
 } from 'firebase/auth';
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-
-WebBrowser.maybeCompleteAuthSession();
+import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
-  requestReady: boolean;
   configured: boolean;
   signInWithGoogle: () => Promise<{ ok: boolean; message?: string }>;
   signOut: () => Promise<void>;
@@ -24,93 +20,111 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+let GoogleSignin: any = undefined;
+let statusCodes: any = undefined;
+if (Platform.OS === 'android') {
+  // require at runtime to avoid web bundling issues
+  const mod = require('@react-native-google-signin/google-signin');
+  GoogleSignin = mod.GoogleSignin;
+  statusCodes = mod.statusCodes;
+  try {
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      offlineAccess: true,
+    });
+  } catch (e) {
+    // configure may throw during SSR/build; ignore here
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const redirectUri = makeRedirectUri({ useProxy: true });
-
-  const [request, , promptAsync] = Google.useAuthRequest({
-    clientId:
-      process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID ??
-      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    scopes: ['profile', 'email'],
-    redirectUri,
-  });
+  const configured = hasFirebaseConfig && Boolean(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (request) {
-      console.log('Google redirectUri:', (request as any).redirectUri ?? redirectUri);
+  const signInWithGoogle = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
+    if (!hasFirebaseConfig) {
+      return { ok: false, message: 'Firebase config is missing. Add EXPO_PUBLIC_FIREBASE_* env values.' };
     }
-  }, [request, redirectUri]);
 
-  const value = useMemo<AuthContextValue>(() => {
-    return {
-      user,
-      loading,
-      requestReady: Boolean(request),
-      configured:
-        hasFirebaseConfig &&
-        Boolean(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID),
-      signInWithGoogle: async () => {
-        if (!hasFirebaseConfig) {
-          return {
-            ok: false,
-            message: 'Firebase config is missing. Add EXPO_PUBLIC_FIREBASE_* env values.',
-          };
+    if (Platform.OS === 'web') {
+      try {
+        const provider = new GoogleAuthProvider();
+        // force account picker to avoid unexpected silent closes
+        try {
+          provider.setCustomParameters?.({ prompt: 'select_account' });
+        } catch {}
+        await signInWithPopup(auth, provider);
+        return { ok: true };
+      } catch (error: any) {
+        console.error('Web Google sign-in failed:', error);
+        const code = error?.code ?? (error && error.name) ?? 'unknown';
+        const message = error?.message ?? String(error);
+        return { ok: false, message: `Web sign-in error (${code}): ${message}` };
+      }
+    }
+
+    if (Platform.OS === 'android') {
+      try {
+        if (!GoogleSignin) {
+          return { ok: false, message: 'Google Sign-In is not configured on this device.' };
         }
-
-        if (!request) {
-          return { ok: false, message: 'Google sign-in is not ready yet. Please retry.' };
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const userInfo = await GoogleSignin.signIn();
+        const idToken = userInfo?.idToken;
+        if (!idToken) {
+          return { ok: false, message: 'No idToken returned from Google Sign-In.' };
         }
-
-        const result = await promptAsync({ useProxy: true });
-        if (result.type === 'success') {
-          const idToken = result.authentication?.idToken ?? (result.params as any)?.id_token;
-          const accessToken =
-            result.authentication?.accessToken ?? (result.params as any)?.access_token;
-
-          if (!idToken && !accessToken) {
-            return {
-              ok: false,
-              message: 'Google did not return a usable token. Please try again.',
-            };
+        const credential = GoogleAuthProvider.credential(idToken);
+        await signInWithCredential(auth, credential);
+        return { ok: true };
+      } catch (error: any) {
+        console.error('Android Google sign-in error:', error);
+        if (statusCodes) {
+          if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+            return { ok: false, message: 'Sign-in was cancelled.' };
           }
-
-          try {
-            const credential = GoogleAuthProvider.credential(idToken ?? null, accessToken ?? null);
-            await signInWithCredential(auth, credential);
-            return { ok: true };
-          } catch (error) {
-            console.error('Google sign-in failed:', error);
-            return {
-              ok: false,
-              message: 'Google account was selected, but Firebase sign-in failed.',
-            };
+          if (error.code === statusCodes.IN_PROGRESS) {
+            return { ok: false, message: 'Sign-in already in progress.' };
           }
-        }
-        if (result.type === 'cancel') {
-          return { ok: false, message: 'Sign-in was cancelled.' };
+          if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+            return { ok: false, message: 'Play services not available or outdated.' };
+          }
         }
         return { ok: false, message: 'Google sign-in failed. Please try again.' };
-      },
-      signOut: async () => {
-        await firebaseSignOut(auth);
-      },
-    };
-  }, [loading, promptAsync, request, user]);
+      }
+    }
+
+    return { ok: false, message: 'Platform not supported for Google sign-in.' };
+  }, []);
+
+  const signOut = useCallback(async () => {
+    if (Platform.OS === 'android' && GoogleSignin) {
+      try {
+        await GoogleSignin.signOut();
+      } catch (e) {
+        // ignore errors from native sign-out
+      }
+    }
+    await firebaseSignOut(auth);
+  }, []);
+
+  const value: AuthContextValue = {
+    user,
+    loading,
+    configured,
+    signInWithGoogle,
+    signOut,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
