@@ -1,12 +1,9 @@
 # ElderEase App 👴👵
 
-> Release: `V2.2.0-CS-01-18/02` — updated April 18, 2026
->
-This is an [Expo](https://expo.dev) project built with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Google Cloud Auth is not working 
+only authentication is added 
+compared to privious brunches **
 
----
-
-## What's New in V2.2.0-CS-01-18/02
 
 ### New Screens
 
