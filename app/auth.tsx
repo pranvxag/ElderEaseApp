@@ -37,7 +37,9 @@ export default function AuthScreen() {
 
       {!configured && (
         <Text style={styles.helpText}>
-          Missing config: add EXPO_PUBLIC_FIREBASE_* and EXPO_PUBLIC_GOOGLE_* variables in your environment.
+          {Platform.OS === 'android'
+            ? 'Sign-in setup incomplete. Ensure EXPO_PUBLIC_FIREBASE_* and EXPO_PUBLIC_GOOGLE_* env vars are set, then open in an Expo development build (Expo Go does not include native Google Sign-In).'
+            : 'Missing config: add EXPO_PUBLIC_FIREBASE_* and EXPO_PUBLIC_GOOGLE_* variables in your environment.'}
         </Text>
       )}
 

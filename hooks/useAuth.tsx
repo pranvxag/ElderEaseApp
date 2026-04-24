@@ -22,18 +22,24 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 let GoogleSignin: any = undefined;
 let statusCodes: any = undefined;
+let nativeGoogleSigninAvailable = false;
 if (Platform.OS === 'android') {
-  // require at runtime to avoid web bundling issues
-  const mod = require('@react-native-google-signin/google-signin');
-  GoogleSignin = mod.GoogleSignin;
-  statusCodes = mod.statusCodes;
   try {
-    GoogleSignin.configure({
-      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      offlineAccess: true,
-    });
-  } catch (e) {
-    // configure may throw during SSR/build; ignore here
+    // require at runtime to avoid web bundling issues and handle Expo Go gracefully
+    const mod = require('@react-native-google-signin/google-signin');
+    GoogleSignin = mod.GoogleSignin;
+    statusCodes = mod.statusCodes;
+    nativeGoogleSigninAvailable = Boolean(GoogleSignin);
+    try {
+      GoogleSignin.configure({
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+        offlineAccess: true,
+      });
+    } catch {
+      // configure may throw during SSR/build; ignore here
+    }
+  } catch {
+    nativeGoogleSigninAvailable = false;
   }
 }
 
@@ -41,7 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const configured = hasFirebaseConfig && Boolean(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+  const configured =
+    hasFirebaseConfig &&
+    Boolean(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) &&
+    (Platform.OS !== 'android' || nativeGoogleSigninAvailable);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
@@ -109,7 +118,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (Platform.OS === 'android') {
       try {
         if (!GoogleSignin) {
-          return { ok: false, message: 'Google Sign-In is not configured on this device.' };
+          return {
+            ok: false,
+            message:
+              'Google Sign-In native module is unavailable. Open this app in an Expo development build (not Expo Go) and rebuild after adding the plugin.',
+          };
         }
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         const userInfo = await GoogleSignin.signIn();
