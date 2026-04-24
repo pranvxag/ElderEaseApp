@@ -10,6 +10,7 @@ const firebaseConfig = {
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 const hasFirebaseConfig = Boolean(
@@ -35,9 +36,16 @@ const app = getApps().length
   : initializeApp(hasFirebaseConfig ? firebaseConfig : fallbackConfig);
 
 let auth = getAuth(app);
+let analytics: unknown | null = null;
 
 if (Platform.OS === 'web') {
   auth = getAuth(app);
+  try {
+    const { getAnalytics } = require('firebase/analytics');
+    analytics = getAnalytics(app);
+  } catch {
+    analytics = null;
+  }
 } else {
   try {
     const { getReactNativePersistence } = require('firebase/auth/react-native');
@@ -51,5 +59,5 @@ if (Platform.OS === 'web') {
 }
 
 export const db = getFirestore(app);
-export { auth, hasFirebaseConfig };
+export { analytics, auth, hasFirebaseConfig };
 
