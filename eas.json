@@ -6,7 +6,17 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyD7mSuVP0nQ3WeH0ySDz544DCxo1dHSVGc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "elderease-pranvxag.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "elderease-pranvxag",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "elderease-pranvxag.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "994743956796",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:994743956796:web:526f619acf90e022a71a39",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "994743956796-omk36kco5ktfi5tb79ac1gd2rip0cc9q.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "994743956796-gsrouiirbb828aememl72b9n2r52hsut.apps.googleusercontent.com"
+      }
     },
     "preview": {
       "distribution": "internal"
