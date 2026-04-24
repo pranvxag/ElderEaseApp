@@ -20,6 +20,9 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+
 let GoogleSignin: any = undefined;
 let statusCodes: any = undefined;
 let nativeGoogleSigninAvailable = false;
@@ -32,7 +35,8 @@ if (Platform.OS === 'android') {
     nativeGoogleSigninAvailable = Boolean(GoogleSignin);
     try {
       GoogleSignin.configure({
-        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+        webClientId: googleWebClientId,
+        iosClientId: googleIosClientId || undefined,
         offlineAccess: true,
       });
     } catch {
@@ -47,10 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const configured =
-    hasFirebaseConfig &&
-    Boolean(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) &&
-    (Platform.OS !== 'android' || nativeGoogleSigninAvailable);
+  const hasGoogleClientId =
+    Platform.OS === 'ios' ? Boolean(googleIosClientId || googleWebClientId) : Boolean(googleWebClientId);
+
+  const configured = hasFirebaseConfig && hasGoogleClientId && (Platform.OS !== 'android' || nativeGoogleSigninAvailable);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
