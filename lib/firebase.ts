@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth, initializeAuth } from 'firebase/auth';
+import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
@@ -35,7 +35,7 @@ const app = getApps().length
   ? getApp()
   : initializeApp(hasFirebaseConfig ? firebaseConfig : fallbackConfig);
 
-let auth = getAuth(app);
+let auth: Auth;
 let analytics: unknown | null = null;
 
 if (Platform.OS === 'web') {
@@ -53,8 +53,13 @@ if (Platform.OS === 'web') {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage),
     });
-  } catch {
-    auth = getAuth(app);
+  } catch (error: any) {
+    // If auth is already initialized, re-use the existing instance.
+    if (error?.code === 'auth/already-initialized') {
+      auth = getAuth(app);
+    } else {
+      auth = getAuth(app);
+    }
   }
 }
 
