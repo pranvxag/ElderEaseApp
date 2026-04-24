@@ -9,7 +9,8 @@ function RootLayoutContent() {
   const router = useRouter();
   const segments = useSegments();
   const { user, loading: authLoading } = useAuth();
-  const [onboarded, , loading] = useStoredState<boolean>(STORAGE_KEYS.ONBOARDED, false);
+  const scopedUid = user?.uid ?? 'anonymous';
+  const [onboarded, , loading] = useStoredState<boolean>(STORAGE_KEYS.ONBOARDED(scopedUid), false);
   useCloudSync();
 
   useEffect(() => {
@@ -41,6 +42,7 @@ function RootLayoutContent() {
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/edit" options={{ title: 'Edit Profile', headerShown: true }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </>

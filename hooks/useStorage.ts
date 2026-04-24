@@ -6,12 +6,12 @@ const storageSubscribers: Map<string, Set<(value: any) => void>> = new Map();
 
 // ── Storage keys ─────────────────────────────────────────────────────────────
 export const STORAGE_KEYS = {
-  MEDICATIONS: 'elderease:medications',
+  PROFILE: (uid: string) => `user_${uid}_profile`,
+  MEDICINES: (uid: string) => `user_${uid}_medicines`,
+  EMERGENCY_CONTACTS: (uid: string) => `user_${uid}_emergency_contacts`,
+  ONBOARDED: (uid: string) => `user_${uid}_onboarded`,
+  NOTIFICATION_MAP: (uid: string) => `user_${uid}_notification_map`, // { medId -> notifId }
   ROUTINE: 'elderease:routine',
-  NOTIFICATION_MAP: 'elderease:notification_map', // { medId → notifId }
-  USER_PROFILE: 'elderease:user_profile',
-  ONBOARDED: 'elderease:onboarded',
-  EMERGENCY_CONTACTS: 'elderease:emergency_contacts',
   LAST_REPORT_SENT: 'elderease:last_report_sent',
   BLOOD_SUGAR_ENTRIES: 'elderease:blood_sugar_entries',
 } as const;
@@ -53,7 +53,7 @@ function notifySubscribers<T>(key: string, value: T) {
 }
 
 // ── React hook: load + save any value with automatic persistence ─────────────
-// Usage:  const [meds, setMeds, loading] = useStoredState(STORAGE_KEYS.MEDICATIONS, []);
+// Usage:  const [meds, setMeds, loading] = useStoredState(STORAGE_KEYS.MEDICINES(uid), []);
 export function useStoredState<T>(
   key: string,
   defaultValue: T

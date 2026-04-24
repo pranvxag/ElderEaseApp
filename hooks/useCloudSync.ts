@@ -1,35 +1,26 @@
-import { DEFAULT_USER_PROFILE, EmergencyContact, Medication, UserProfile } from '@/constants/data';
 import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { db, hasFirebaseConfig } from '@/lib/firebase';
+import { UserProfile } from '@/types/user';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type CloudUserData = {
-  profile?: UserProfile;
-  medications?: Medication[];
-  emergencyContacts?: EmergencyContact[];
-  onboarded?: boolean;
-  updatedAt?: unknown;
-};
-
 export function useCloudSync() {
   const { user } = useAuth();
+  const uid = user?.uid ?? 'anonymous';
+  const { profile, saveProfile, loading: profileLoading } = useUserProfile();
 
-  const [profile, setProfile, profileLoading] = useStoredState<UserProfile>(
-    STORAGE_KEYS.USER_PROFILE,
-    DEFAULT_USER_PROFILE
-  );
-  const [medications, setMedications, medsLoading] = useStoredState<Medication[]>(
-    STORAGE_KEYS.MEDICATIONS,
+  const [medications, setMedications, medsLoading] = useStoredState<UserProfile['medicines']>(
+    STORAGE_KEYS.MEDICINES(uid),
     []
   );
-  const [contacts, setContacts, contactsLoading] = useStoredState<EmergencyContact[]>(
-    STORAGE_KEYS.EMERGENCY_CONTACTS,
+  const [contacts, setContacts, contactsLoading] = useStoredState<UserProfile['emergencyContacts']>(
+    STORAGE_KEYS.EMERGENCY_CONTACTS(uid),
     []
   );
   const [onboarded, setOnboarded, onboardLoading] = useStoredState<boolean>(
-    STORAGE_KEYS.ONBOARDED,
+    STORAGE_KEYS.ONBOARDED(uid),
     false
   );
 
@@ -37,14 +28,16 @@ export function useCloudSync() {
   const loading = profileLoading || medsLoading || contactsLoading || onboardLoading;
   const lastSyncedFingerprintRef = useRef<string>('');
 
-  const payload = useMemo<CloudUserData>(
-    () => ({
-      profile,
-      medications,
-      emergencyContacts: contacts,
-      onboarded,
-    }),
-    [contacts, medications, onboarded, profile]
+  const payload = useMemo<UserProfile | null>(
+    () =>
+      profile
+        ? {
+            ...profile,
+            medicines: medications,
+            emergencyContacts: contacts,
+          }
+        : null,
+    [contacts, medications, profile]
   );
 
   useEffect(() => {
@@ -57,29 +50,28 @@ export function useCloudSync() {
 
     (async () => {
       try {
-        const ref = doc(db, 'users', user.uid);
+        const ref = doc(db, 'users', user.uid, 'profile', 'data');
         const snapshot = await getDoc(ref);
 
         if (cancelled) return;
 
         if (!snapshot.exists()) {
-          await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true });
-          lastSyncedFingerprintRef.current = JSON.stringify(payload);
+          if (payload) {
+            await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true });
+            lastSyncedFingerprintRef.current = JSON.stringify(payload);
+          }
           setHydrated(true);
           return;
         }
 
-        const cloud = snapshot.data() as CloudUserData;
-        if (cloud.profile) setProfile(cloud.profile);
-        if (cloud.medications) setMedications(cloud.medications);
-        if (cloud.emergencyContacts) setContacts(cloud.emergencyContacts);
-        if (typeof cloud.onboarded === 'boolean') setOnboarded(cloud.onboarded);
+        const cloud = snapshot.data() as UserProfile;
+        await saveProfile(cloud);
+        setMedications(cloud.medicines ?? []);
+        setContacts(cloud.emergencyContacts ?? []);
+        setOnboarded(Boolean(cloud.uid));
 
         const normalized = {
-          profile: cloud.profile ?? profile,
-          medications: cloud.medications ?? medications,
-          emergencyContacts: cloud.emergencyContacts ?? contacts,
-          onboarded: cloud.onboarded ?? onboarded,
+          ...cloud,
         };
 
         lastSyncedFingerprintRef.current = JSON.stringify(normalized);
@@ -94,28 +86,26 @@ export function useCloudSync() {
       cancelled = true;
     };
   }, [
-    contacts,
     loading,
-    medications,
-    onboarded,
     payload,
-    profile,
+    setOnboarded,
+    saveProfile,
     setContacts,
     setMedications,
-    setOnboarded,
-    setProfile,
     user,
   ]);
 
   useEffect(() => {
     if (!user || !hydrated || loading || !hasFirebaseConfig) return;
 
+    if (!payload) return;
+
     const fingerprint = JSON.stringify(payload);
     if (fingerprint === lastSyncedFingerprintRef.current) return;
 
     lastSyncedFingerprintRef.current = fingerprint;
 
-    const ref = doc(db, 'users', user.uid);
+    const ref = doc(db, 'users', user.uid, 'profile', 'data');
     setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true }).catch(
       (error) => {
         console.error('Cloud sync failed:', error);

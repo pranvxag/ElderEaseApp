@@ -5,16 +5,20 @@ import {
     requestNotificationPermission,
     scheduleMedicationReminder,
 } from '../lib/notifications';
+import { useAuth } from './useAuth';
 import { STORAGE_KEYS, useStoredState } from './useStorage';
 
 export function useMedications() {
+  const { user } = useAuth();
+  const uid = user?.uid ?? 'anonymous';
+
   const [meds, setMeds, medsLoading] = useStoredState<Medication[]>(
-    STORAGE_KEYS.MEDICATIONS,
+    STORAGE_KEYS.MEDICINES(uid),
     MOCK_MEDICATIONS
   );
   const [notificationMap, setNotificationMap, mappingsLoading] = useStoredState<
     Record<string, string>
-  >(STORAGE_KEYS.NOTIFICATION_MAP, {});
+  >(STORAGE_KEYS.NOTIFICATION_MAP(uid), {});
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const loading = medsLoading || mappingsLoading;
