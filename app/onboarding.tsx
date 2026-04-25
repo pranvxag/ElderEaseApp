@@ -2,88 +2,172 @@ import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/const
 import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, storageSet } from '@/hooks/useStorage';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { EmergencyContact, Medicine } from '@/types/user';
+import { EmergencyContact, LANGUAGE_OPTIONS, Medicine, PreferredLanguage } from '@/types/user';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'] as const;
 
+const AGE_OPTIONS = Array.from({ length: 83 }, (_, i) => String(i + 18)); // 18–100
+
+const RELATION_OPTIONS = [
+  'Son', 'Daughter', 'Spouse', 'Brother', 'Sister',
+  'Father', 'Mother', 'Friend', 'Neighbour', 'Caretaker', 'Other',
+];
+
+const FREQUENCY_OPTIONS = [
+  'Once a day', 'Twice a day', 'Three times a day',
+  'Every 8 hours', 'Every 12 hours', 'Weekly', 'As needed',
+];
+
+const TIME_OPTIONS = [
+  'Morning (6–9 AM)', 'Mid-morning (9–12 PM)', 'Afternoon (12–3 PM)',
+  'Evening (3–6 PM)', 'Night (6–9 PM)', 'Bedtime (9 PM+)',
+];
+
 const createId = () => Date.now().toString() + Math.random().toString(36).slice(2);
 
+// ─── Reusable Dropdown ────────────────────────────────────────────────────────
+function Dropdown({
+  label,
+  value,
+  options,
+  onSelect,
+  placeholder = 'Select…',
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onSelect: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ marginBottom: Spacing.md }}>
+      <Text style={dd.label}>{label}</Text>
+      <TouchableOpacity style={dd.trigger} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={value ? dd.triggerText : dd.placeholder}>
+          {value || placeholder}
+        </Text>
+        <Text style={dd.arrow}>▾</Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={dd.backdrop} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={dd.sheet}>
+            <Text style={dd.sheetTitle}>{label}</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {options.map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  style={[dd.option, value === opt && dd.optionActive]}
+                  onPress={() => { onSelect(opt); setOpen(false); }}
+                >
+                  <Text style={[dd.optionText, value === opt && dd.optionTextActive]}>{opt}</Text>
+                  {value === opt && <Text style={dd.check}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+const dd = StyleSheet.create({
+  label:           { fontSize: FontSizes.sm, color: Colors.textSecondary, marginBottom: Spacing.xs },
+  trigger: {
+    backgroundColor: Colors.cardBg, borderRadius: Radii.lg,
+    padding: Spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  triggerText:     { color: Colors.textPrimary, fontSize: FontSizes.md },
+  placeholder:     { color: Colors.textMuted, fontSize: FontSizes.md },
+  arrow:           { color: Colors.textMuted, fontSize: 14 },
+  backdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: Colors.cardBg, borderTopLeftRadius: Radii.xl,
+    borderTopRightRadius: Radii.xl, padding: Spacing.lg,
+    maxHeight: '60%',
+  },
+  sheetTitle:      { color: Colors.textPrimary, fontSize: FontSizes.md, fontWeight: FontWeights.bold, marginBottom: Spacing.md },
+  option: {
+    paddingVertical: Spacing.sm + 2, paddingHorizontal: Spacing.sm,
+    borderRadius: Radii.md, flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 2,
+  },
+  optionActive:    { backgroundColor: Colors.primary + '22' },
+  optionText:      { color: Colors.textPrimary, fontSize: FontSizes.md },
+  optionTextActive:{ color: Colors.primary, fontWeight: FontWeights.bold },
+  check:           { color: Colors.primary, fontWeight: FontWeights.bold },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function OnboardingScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { profile, loading, saveProfile, updateEmergencyContacts, updateMedicines } = useUserProfile();
 
   const [step, setStep] = useState(1);
-  const [displayName, setDisplayName] = useState('');
-  const [age, setAge] = useState('');
-  const [bloodGroup, setBloodGroup] = useState<string>('');
-  const [allergies, setAllergies] = useState('');
-  const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [displayName, setDisplayName]           = useState('');
+  const [age, setAge]                           = useState('');
+  const [bloodGroup, setBloodGroup]             = useState('');
+  const [allergies, setAllergies]               = useState('');
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>('en');
+  const [medicines, setMedicines]               = useState<Medicine[]>([]);
+  const [contacts, setContacts]                 = useState<EmergencyContact[]>([]);
 
   const [newMedicine, setNewMedicine] = useState<Medicine>({
-    id: '',
-    name: '',
-    dosage: '',
-    frequency: '',
-    time: '',
-    notes: '',
+    id: '', name: '', dosage: '', frequency: '', time: '', notes: '',
   });
   const [addingMedicine, setAddingMedicine] = useState(false);
 
   const [newContact, setNewContact] = useState<EmergencyContact>({
-    id: '',
-    name: '',
-    phone: '',
-    relation: '',
+    id: '', name: '', phone: '', relation: '',
   });
   const [addingContact, setAddingContact] = useState(false);
 
   useEffect(() => {
     if (loading || !user) return;
-
     setDisplayName(profile?.displayName || user.displayName || '');
     setAge(profile?.age || '');
     setBloodGroup(profile?.bloodGroup || '');
     setAllergies(profile?.allergies || '');
+    setPreferredLanguage(profile?.preferredLanguage || 'en');
     setMedicines(profile?.medicines || []);
     setContacts(profile?.emergencyContacts || []);
   }, [loading, profile, user]);
 
-  if (loading || !user) {
-    return null;
-  }
+  if (loading || !user) return null;
 
   const addMedicine = () => {
     if (!newMedicine.name.trim() || !newMedicine.dosage.trim() || !newMedicine.frequency.trim()) {
       Alert.alert('Missing medicine info', 'Please fill medicine name, dosage, and frequency.');
       return;
     }
-
-    setMedicines((prev) => [
-      ...prev,
-      {
-        id: createId(),
-        name: newMedicine.name.trim(),
-        dosage: newMedicine.dosage.trim(),
-        frequency: newMedicine.frequency.trim(),
-        time: newMedicine.time?.trim() || undefined,
-        notes: newMedicine.notes?.trim() || undefined,
-      },
-    ]);
+    setMedicines(prev => [...prev, {
+      id: createId(),
+      name: newMedicine.name.trim(),
+      dosage: newMedicine.dosage.trim(),
+      frequency: newMedicine.frequency.trim(),
+      time: newMedicine.time?.trim() || undefined,
+      notes: newMedicine.notes?.trim() || undefined,
+    }]);
     setNewMedicine({ id: '', name: '', dosage: '', frequency: '', time: '', notes: '' });
     setAddingMedicine(false);
   };
@@ -93,16 +177,12 @@ export default function OnboardingScreen() {
       Alert.alert('Missing contact info', 'Please fill contact name, phone, and relation.');
       return;
     }
-
-    setContacts((prev) => [
-      ...prev,
-      {
-        id: createId(),
-        name: newContact.name.trim(),
-        phone: newContact.phone.trim(),
-        relation: newContact.relation.trim(),
-      },
-    ]);
+    setContacts(prev => [...prev, {
+      id: createId(),
+      name: newContact.name.trim(),
+      phone: newContact.phone.trim(),
+      relation: newContact.relation.trim(),
+    }]);
     setNewContact({ id: '', name: '', phone: '', relation: '' });
     setAddingContact(false);
   };
@@ -110,16 +190,12 @@ export default function OnboardingScreen() {
   const finishOnboarding = async () => {
     if (!displayName.trim()) {
       Alert.alert('Missing name', 'Please enter your name to continue.');
-      setStep(1);
-      return;
+      setStep(1); return;
     }
-
     if (contacts.length < 1) {
       Alert.alert('Emergency contact required', 'Please add at least one emergency contact.');
-      setStep(3);
-      return;
+      setStep(3); return;
     }
-
     await saveProfile({
       uid: user.uid,
       displayName: displayName.trim(),
@@ -128,6 +204,7 @@ export default function OnboardingScreen() {
       age: age.trim(),
       bloodGroup,
       allergies: allergies.trim(),
+      preferredLanguage,
       medicines,
       emergencyContacts: contacts,
     });
@@ -138,17 +215,16 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.wrapper}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.wrapper} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Welcome to ElderEase</Text>
         <Text style={styles.subtitle}>Step {step} of 3</Text>
 
+        {/* ── Step 1: Personal Info ─────────────────────────────────────── */}
         {step === 1 && (
           <>
             <Text style={styles.sectionTitle}>Personal Info</Text>
+
             <Text style={styles.label}>Name</Text>
             <TextInput
               style={styles.input}
@@ -158,55 +234,73 @@ export default function OnboardingScreen() {
               placeholderTextColor={Colors.textMuted}
             />
 
-            <Text style={styles.label}>Age</Text>
-            <TextInput
-              style={styles.input}
+            <Dropdown
+              label="Age"
               value={age}
-              onChangeText={setAge}
-              placeholder="Your age"
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="number-pad"
+              options={AGE_OPTIONS}
+              onSelect={setAge}
+              placeholder="Select your age"
             />
 
             <Text style={styles.label}>Blood Group</Text>
             <View style={styles.chipWrap}>
-              {BLOOD_GROUPS.map((group) => (
+              {BLOOD_GROUPS.map(group => (
                 <TouchableOpacity
                   key={group}
                   style={[styles.chip, bloodGroup === group && styles.chipActive]}
                   onPress={() => setBloodGroup(group)}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.chipText, bloodGroup === group && styles.chipTextActive]}>{group}</Text>
+                  <Text style={[styles.chipText, bloodGroup === group && styles.chipTextActive]}>
+                    {group}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Preferred Language</Text>
+            <View style={styles.chipWrap}>
+              {LANGUAGE_OPTIONS.map(lang => (
+                <TouchableOpacity
+                  key={lang.value}
+                  style={[styles.langChip, preferredLanguage === lang.value && styles.chipActive]}
+                  onPress={() => setPreferredLanguage(lang.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipText, preferredLanguage === lang.value && styles.chipTextActive]}>
+                    {lang.label}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </>
         )}
 
+        {/* ── Step 2: Medical Info ──────────────────────────────────────── */}
         {step === 2 && (
           <>
             <Text style={styles.sectionTitle}>Medical Info</Text>
+
             <Text style={styles.label}>Allergies</Text>
             <TextInput
               style={[styles.input, styles.multiline]}
               value={allergies}
               onChangeText={setAllergies}
-              placeholder="List known allergies"
+              placeholder="List known allergies (e.g. Penicillin, Dust)"
               placeholderTextColor={Colors.textMuted}
               multiline
               textAlignVertical="top"
             />
 
             <Text style={styles.sectionTitle}>Medicines</Text>
-            {medicines.map((medicine) => (
+            {medicines.map(medicine => (
               <View key={medicine.id} style={styles.card}>
                 <Text style={styles.cardTitle}>{medicine.name}</Text>
                 <Text style={styles.cardText}>{medicine.dosage} • {medicine.frequency}</Text>
                 {medicine.time ? <Text style={styles.cardText}>Time: {medicine.time}</Text> : null}
                 {medicine.notes ? <Text style={styles.cardText}>Notes: {medicine.notes}</Text> : null}
                 <TouchableOpacity
-                  onPress={() => setMedicines((prev) => prev.filter((item) => item.id !== medicine.id))}
+                  onPress={() => setMedicines(prev => prev.filter(m => m.id !== medicine.id))}
                   style={styles.deleteButton}
                 >
                   <Text style={styles.deleteText}>Delete</Text>
@@ -216,39 +310,42 @@ export default function OnboardingScreen() {
 
             {addingMedicine ? (
               <View style={styles.inlineForm}>
+                <Text style={styles.label}>Medicine Name</Text>
                 <TextInput
                   style={styles.input}
                   value={newMedicine.name}
-                  onChangeText={(value) => setNewMedicine((prev) => ({ ...prev, name: value }))}
-                  placeholder="Medicine name"
+                  onChangeText={v => setNewMedicine(p => ({ ...p, name: v }))}
+                  placeholder="e.g. Metformin"
                   placeholderTextColor={Colors.textMuted}
                 />
+                <Text style={styles.label}>Dosage</Text>
                 <TextInput
                   style={styles.input}
                   value={newMedicine.dosage}
-                  onChangeText={(value) => setNewMedicine((prev) => ({ ...prev, dosage: value }))}
-                  placeholder="Dosage"
+                  onChangeText={v => setNewMedicine(p => ({ ...p, dosage: v }))}
+                  placeholder="e.g. 500mg"
                   placeholderTextColor={Colors.textMuted}
                 />
-                <TextInput
-                  style={styles.input}
+                <Dropdown
+                  label="Frequency"
                   value={newMedicine.frequency}
-                  onChangeText={(value) => setNewMedicine((prev) => ({ ...prev, frequency: value }))}
-                  placeholder="Frequency"
-                  placeholderTextColor={Colors.textMuted}
+                  options={FREQUENCY_OPTIONS}
+                  onSelect={v => setNewMedicine(p => ({ ...p, frequency: v }))}
+                  placeholder="How often?"
                 />
-                <TextInput
-                  style={styles.input}
-                  value={newMedicine.time}
-                  onChangeText={(value) => setNewMedicine((prev) => ({ ...prev, time: value }))}
-                  placeholder="Time"
-                  placeholderTextColor={Colors.textMuted}
+                <Dropdown
+                  label="Time"
+                  value={newMedicine.time || ''}
+                  options={TIME_OPTIONS}
+                  onSelect={v => setNewMedicine(p => ({ ...p, time: v }))}
+                  placeholder="When to take?"
                 />
+                <Text style={styles.label}>Notes (optional)</Text>
                 <TextInput
                   style={[styles.input, styles.multiline]}
                   value={newMedicine.notes}
-                  onChangeText={(value) => setNewMedicine((prev) => ({ ...prev, notes: value }))}
-                  placeholder="Notes"
+                  onChangeText={v => setNewMedicine(p => ({ ...p, notes: v }))}
+                  placeholder="Any special instructions"
                   placeholderTextColor={Colors.textMuted}
                   multiline
                   textAlignVertical="top"
@@ -259,22 +356,24 @@ export default function OnboardingScreen() {
               </View>
             ) : (
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddingMedicine(true)}>
-                <Text style={styles.secondaryButtonText}>Add Medicine</Text>
+                <Text style={styles.secondaryButtonText}>+ Add Medicine</Text>
               </TouchableOpacity>
             )}
           </>
         )}
 
+        {/* ── Step 3: Emergency Contacts ────────────────────────────────── */}
         {step === 3 && (
           <>
             <Text style={styles.sectionTitle}>Emergency Contacts</Text>
-            {contacts.map((contact) => (
+            <Text style={styles.hint}>Add at least one contact who can be reached in an emergency.</Text>
+
+            {contacts.map(contact => (
               <View key={contact.id} style={styles.card}>
                 <Text style={styles.cardTitle}>{contact.name}</Text>
-                <Text style={styles.cardText}>{contact.relation}</Text>
-                <Text style={styles.cardText}>{contact.phone}</Text>
+                <Text style={styles.cardText}>{contact.relation} • {contact.phone}</Text>
                 <TouchableOpacity
-                  onPress={() => setContacts((prev) => prev.filter((item) => item.id !== contact.id))}
+                  onPress={() => setContacts(prev => prev.filter(c => c.id !== contact.id))}
                   style={styles.deleteButton}
                 >
                   <Text style={styles.deleteText}>Delete</Text>
@@ -284,27 +383,29 @@ export default function OnboardingScreen() {
 
             {addingContact ? (
               <View style={styles.inlineForm}>
+                <Text style={styles.label}>Contact Name</Text>
                 <TextInput
                   style={styles.input}
                   value={newContact.name}
-                  onChangeText={(value) => setNewContact((prev) => ({ ...prev, name: value }))}
-                  placeholder="Contact name"
+                  onChangeText={v => setNewContact(p => ({ ...p, name: v }))}
+                  placeholder="Full name"
                   placeholderTextColor={Colors.textMuted}
                 />
+                <Text style={styles.label}>Phone Number</Text>
                 <TextInput
                   style={styles.input}
                   value={newContact.phone}
-                  onChangeText={(value) => setNewContact((prev) => ({ ...prev, phone: value }))}
-                  placeholder="Phone"
+                  onChangeText={v => setNewContact(p => ({ ...p, phone: v }))}
+                  placeholder="+91 XXXXX XXXXX"
                   placeholderTextColor={Colors.textMuted}
                   keyboardType="phone-pad"
                 />
-                <TextInput
-                  style={styles.input}
+                <Dropdown
+                  label="Relation"
                   value={newContact.relation}
-                  onChangeText={(value) => setNewContact((prev) => ({ ...prev, relation: value }))}
-                  placeholder="Relation"
-                  placeholderTextColor={Colors.textMuted}
+                  options={RELATION_OPTIONS}
+                  onSelect={v => setNewContact(p => ({ ...p, relation: v }))}
+                  placeholder="Select relation"
                 />
                 <TouchableOpacity style={styles.button} onPress={addContact}>
                   <Text style={styles.buttonText}>Save Contact</Text>
@@ -312,15 +413,16 @@ export default function OnboardingScreen() {
               </View>
             ) : (
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddingContact(true)}>
-                <Text style={styles.secondaryButtonText}>Add Contact</Text>
+                <Text style={styles.secondaryButtonText}>+ Add Contact</Text>
               </TouchableOpacity>
             )}
           </>
         )}
 
+        {/* ── Navigation ────────────────────────────────────────────────── */}
         <View style={styles.navigationRow}>
           {step > 1 ? (
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep((prev) => prev - 1)}>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep(p => p - 1)}>
               <Text style={styles.secondaryButtonText}>Back</Text>
             </TouchableOpacity>
           ) : (
@@ -328,7 +430,7 @@ export default function OnboardingScreen() {
           )}
 
           {step < 3 ? (
-            <TouchableOpacity style={styles.button} onPress={() => setStep((prev) => prev + 1)}>
+            <TouchableOpacity style={styles.button} onPress={() => setStep(p => p + 1)}>
               <Text style={styles.buttonText}>Next</Text>
             </TouchableOpacity>
           ) : (
@@ -343,139 +445,71 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  wrapper:   { flex: 1, backgroundColor: Colors.background },
   container: {
-    padding: Spacing.base,
-    paddingTop: Spacing.xl,
-    backgroundColor: Colors.background,
-    minHeight: '100%',
-    paddingBottom: Spacing.xxl,
+    padding: Spacing.base, paddingTop: Spacing.xl,
+    backgroundColor: Colors.background, minHeight: '100%', paddingBottom: Spacing.xxl,
   },
   title: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.heavy,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.md,
+    fontSize: FontSizes.xxl, fontWeight: FontWeights.heavy,
+    color: Colors.textPrimary, marginBottom: Spacing.md,
   },
   subtitle: {
-    fontSize: FontSizes.md,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xl,
-    lineHeight: 22,
+    fontSize: FontSizes.md, color: Colors.textSecondary,
+    marginBottom: Spacing.xl, lineHeight: 22,
   },
-  label: {
-    fontSize: FontSizes.sm,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xs,
+  hint: {
+    fontSize: FontSizes.sm, color: Colors.textMuted,
+    marginBottom: Spacing.md, lineHeight: 20,
   },
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  chip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radii.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.cardBg,
-  },
-  chipActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary,
-  },
-  chipText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
-  },
-  chipTextActive: {
-    color: Colors.textOnPrimary,
-  },
+  label: { fontSize: FontSizes.sm, color: Colors.textSecondary, marginBottom: Spacing.xs },
   sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.textPrimary,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.sm,
+    fontSize: FontSizes.lg, fontWeight: FontWeights.bold,
+    color: Colors.textPrimary, marginTop: Spacing.md, marginBottom: Spacing.sm,
   },
+  chipWrap:  { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
+  chip: {
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: Radii.full, borderWidth: 1,
+    borderColor: Colors.border, backgroundColor: Colors.cardBg,
+  },
+  langChip: {
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: Radii.full, borderWidth: 1,
+    borderColor: Colors.border, backgroundColor: Colors.cardBg,
+  },
+  chipActive:     { borderColor: Colors.primary, backgroundColor: Colors.primary },
+  chipText:       { color: Colors.textSecondary, fontSize: FontSizes.sm, fontWeight: FontWeights.medium },
+  chipTextActive: { color: Colors.textOnPrimary },
   input: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: Radii.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    color: Colors.textPrimary,
-    fontSize: FontSizes.md,
+    backgroundColor: Colors.cardBg, borderRadius: Radii.lg,
+    padding: Spacing.md, marginBottom: Spacing.md,
+    color: Colors.textPrimary, fontSize: FontSizes.md,
   },
-  multiline: {
-    minHeight: 90,
-  },
+  multiline: { minHeight: 90 },
   card: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: Radii.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    ...Shadows.card,
+    backgroundColor: Colors.cardBg, borderRadius: Radii.lg,
+    padding: Spacing.md, marginBottom: Spacing.sm, ...Shadows.card,
   },
-  cardTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.md,
-    fontWeight: FontWeights.bold,
-  },
-  cardText: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.sm,
-    marginTop: 2,
-  },
-  deleteButton: {
-    marginTop: Spacing.sm,
-  },
-  deleteText: {
-    color: Colors.emergency,
-    fontWeight: FontWeights.semibold,
-  },
-  inlineForm: {
-    marginTop: Spacing.sm,
-  },
+  cardTitle:    { color: Colors.textPrimary, fontSize: FontSizes.md, fontWeight: FontWeights.bold },
+  cardText:     { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
+  deleteButton: { marginTop: Spacing.sm },
+  deleteText:   { color: Colors.emergency, fontWeight: FontWeights.semibold },
+  inlineForm:   { marginTop: Spacing.sm },
   navigationRow: {
-    marginTop: Spacing.lg,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
+    marginTop: Spacing.lg, flexDirection: 'row',
+    justifyContent: 'space-between', gap: Spacing.sm,
   },
-  navSpacer: {
-    flex: 1,
-  },
+  navSpacer: { flex: 1 },
   button: {
-    flex: 1,
-    backgroundColor: Colors.primary,
-    borderRadius: Radii.xl,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    ...Shadows.strong,
+    flex: 1, backgroundColor: Colors.primary, borderRadius: Radii.xl,
+    paddingVertical: Spacing.md, alignItems: 'center', ...Shadows.strong,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: FontSizes.md,
-    fontWeight: FontWeights.bold,
-  },
+  buttonText:          { color: '#fff', fontSize: FontSizes.md, fontWeight: FontWeights.bold },
   secondaryButton: {
-    flex: 1,
-    borderRadius: Radii.xl,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    backgroundColor: Colors.cardBg,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    flex: 1, borderRadius: Radii.xl, paddingVertical: Spacing.md,
+    alignItems: 'center', backgroundColor: Colors.cardBg,
+    borderWidth: 1, borderColor: Colors.primary,
   },
-  secondaryButtonText: {
-    color: Colors.primary,
-    fontSize: FontSizes.md,
-    fontWeight: FontWeights.bold,
-  },
+  secondaryButtonText: { color: Colors.primary, fontSize: FontSizes.md, fontWeight: FontWeights.bold },
 });

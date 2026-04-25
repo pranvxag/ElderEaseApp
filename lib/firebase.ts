@@ -1,7 +1,8 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { Platform } from 'react-native';
+
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -63,6 +64,21 @@ if (Platform.OS === 'web') {
   }
 }
 
-export const db = getFirestore(app);
-export { analytics, auth, hasFirebaseConfig };
+// export const db = getFirestore(app);
+// export const db = initializeFirestore(app, {
+//   localCache: persistentLocalCache(),
+// });
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache(),
+  });
+} catch {
+  db = getFirestore(app);
+}
 
+export { analytics, auth, db, hasFirebaseConfig };
+
+
+// import { initializeFirestore } from 'firebase/firestore';
+// import { persistentLocalCache } from 'firebase/firestore/local_cache';  

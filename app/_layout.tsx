@@ -20,20 +20,28 @@ function RootLayoutContent() {
     const inAuth = topSegment === 'auth';
     const inOnboarding = topSegment === 'onboarding';
 
-    if (!user && !inAuth) {
-      router.replace('/auth');
-      return;
-    }
+    // Defer navigation so Expo Router's segment state is fully settled
+    // and to avoid setState during render warnings
+    const timeout = setTimeout(() => {
+      if (!user && !inAuth) {
+        router.replace('/auth');
+        return;
+      }
 
-    if (user && !onboarded && !inOnboarding) {
-      router.replace('/onboarding');
-      return;
-    }
+      if (user && !onboarded && !inOnboarding) {
+        router.replace('/onboarding');
+        return;
+      }
 
-    if (user && onboarded && (inAuth || inOnboarding)) {
-      router.replace('/(tabs)');
-    }
-  }, [authLoading, loading, onboarded, router, segments, user]);
+      if (user && onboarded && (inAuth || inOnboarding)) {
+        router.replace('/(tabs)');
+      }
+    }, 0);
+
+    return () => clearTimeout(timeout);
+
+  }, [authLoading, loading, onboarded, segments, user]);
+  // ✅ router removed from deps — stable ref, caused extra re-runs
 
   return (
     <>
