@@ -1,6 +1,11 @@
 import AICallLogo from '@/components/icons/AICallLogo';
+import { useAuth } from '@/hooks/useAuth';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useMedications } from '@/hooks/useMedications';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { LANGUAGE_CODES, PreferredLanguage } from '@/types/user';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -21,6 +26,10 @@ import {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
+const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+const SPEECH_API_KEY  = process.env.EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY;
+const FIREBASE_PROJECT = 'elderease-pranvxag';
+
 // ─── Design palette ───────────────────────────────────────────────────────────
 const P = {
   bg:         '#040C18',
@@ -36,68 +45,149 @@ const P = {
   userBg:     '#112D64',
   chipBg:     '#0C1B30',
   chipBorder: '#1A3058',
+  mic:        '#7C3AED',
+  micActive:  '#A855F7',
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CallMode = 'sugar' | 'meds';
 interface Message { role: 'agent' | 'user'; text: string; }
 
-// ─── System prompts ───────────────────────────────────────────────────────────
-function buildSystemPrompt(mode: CallMode, medList: string): string {
+// ─── Language helpers ─────────────────────────────────────────────────────────
+function getLangCodes(lang: PreferredLanguage) {
+  return LANGUAGE_CODES[lang] ?? LANGUAGE_CODES['en'];
+}
+
+function buildSystemPrompt(mode: CallMode, medList: string, lang: PreferredLanguage): string {
+  const langInstruction =
+    lang === 'hi' ? 'Always respond in Hindi (Devanagari script). Use simple, friendly Hindi.' :
+    lang === 'mr' ? 'Always respond in Marathi (Devanagari script). Use simple, friendly Marathi.' :
+    'Always respond in English. Use simple, clear English.';
+
   if (mode === 'meds') {
     return `You are ElderEase, a warm and caring AI health assistant calling an elderly person.
 Your job is to remind them to take their medications and confirm they have taken them.
 Today's medications: ${medList || 'no medications scheduled'}.
 Rules:
+- ${langInstruction}
 - Speak in simple, short sentences. Be warm, patient, and reassuring.
 - Start by greeting them and asking if they have taken their medication.
 - If they say yes: congratulate them warmly and say their caregiver will be notified.
 - If they say no: gently remind them to take it now and offer to wait.
 - If they seem confused: speak more slowly, repeat gently.
 - End the call kindly after confirming.
-- Respond in the same language the user uses (Hindi/English mix is fine).
 - Keep each response to 2-3 short sentences maximum.`;
   }
+
   return `You are ElderEase, a caring AI health assistant calling an elderly person to check their blood sugar.
 Your job is to ask them about their blood sugar reading and record the value.
 Rules:
+- ${langInstruction}
 - Speak in simple, short, reassuring sentences.
 - Ask them what their sugar reading is today.
-- When they give a number, confirm it back to them clearly (e.g. "So your reading is 120 mg/dL, is that right?").
-- Give brief, simple feedback (normal: 80-140 mg/dL; high if above 180; low if below 70).
+- When they give a number, confirm it back clearly.
+- Give brief feedback (normal: 80–140 mg/dL; high if above 180; low if below 70).
 - Do NOT give medical advice — only say whether to inform their doctor.
 - If they say a value, end your message with: SUGAR_VALUE:<number> (e.g. SUGAR_VALUE:120)
-- Respond in whatever language they use.
 - Keep each response to 2-3 short sentences maximum.`;
 }
 
-// ─── Groq API ─────────────────────────────────────────────────────────────────
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-
-async function callGroqAgent(
+// ─── Gemini API (Firebase AI Logic) ──────────────────────────────────────────
+async function callGeminiAgent(
   systemPrompt: string,
-  history: { role: 'user' | 'assistant'; content: string }[]
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[]
 ): Promise<string> {
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 1000,
-      messages: [{ role: 'system', content: systemPrompt }, ...history],
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: history,
+      generationConfig: {
+        maxOutputTokens: 300,
+        temperature: 0.7,
+      },
     }),
   });
+
   if (!response.ok) {
     const e = await response.text();
-    throw new Error(`Groq ${response.status}: ${e}`);
+    throw new Error(`Gemini ${response.status}: ${e}`);
   }
+
   const data = await response.json();
-  return data.choices[0].message.content.trim();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
 }
 
+// ─── Google Cloud TTS ─────────────────────────────────────────────────────────
+async function synthesizeSpeech(text: string, langCode: string): Promise<string | null> {
+  try {
+    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${SPEECH_API_KEY}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text },
+        voice: {
+          languageCode: langCode,
+          ssmlGender: 'FEMALE',
+        },
+        audioConfig: {
+          audioEncoding: 'MP3',
+          speakingRate: 0.9,
+          pitch: 0.0,
+        },
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const base64Audio = data.audioContent;
+    if (!base64Audio) return null;
+
+    // Write to temp file and play
+    const path = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
+    await FileSystem.writeAsStringAsync(path, base64Audio, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return path;
+  } catch (e) {
+    console.warn('TTS error:', e);
+    return null;
+  }
+}
+
+// ─── Google Cloud STT ─────────────────────────────────────────────────────────
+async function transcribeSpeech(audioBase64: string, langCode: string): Promise<string> {
+  const url = `https://speech.googleapis.com/v1/speech:recognize?key=${SPEECH_API_KEY}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      config: {
+        encoding: 'AMR_WB',
+        sampleRateHertz: 16000,
+        languageCode: langCode,
+        alternativeLanguageCodes: ['en-IN', 'hi-IN', 'mr-IN'],
+        model: 'default',
+        enableAutomaticPunctuation: true,
+      },
+      audio: { content: audioBase64 },
+    }),
+  });
+
+  if (!response.ok) {
+    console.warn('STT error:', await response.text());
+    return '';
+  }
+
+  const data = await response.json();
+  return data.results?.[0]?.alternatives?.[0]?.transcript ?? '';
+}
+
+// ─── Sugar helpers ────────────────────────────────────────────────────────────
 function extractSugarTag(text: string): number | null {
   const m = text.match(/SUGAR_VALUE:(\d+)/);
   return m ? parseInt(m[1], 10) : null;
@@ -106,11 +196,9 @@ function cleanAgentText(text: string): string {
   return text.replace(/SUGAR_VALUE:\d+/g, '').trim();
 }
 
-// ─── Waveform component ───────────────────────────────────────────────────────
-function Waveform({ active }: { active: boolean }) {
-  const bars = useRef(
-    Array.from({ length: 8 }, () => new Animated.Value(0.15))
-  ).current;
+// ─── Waveform ─────────────────────────────────────────────────────────────────
+function Waveform({ active, color = P.accent }: { active: boolean; color?: string }) {
+  const bars = useRef(Array.from({ length: 8 }, () => new Animated.Value(0.15))).current;
   const loopsRef = useRef<Animated.CompositeAnimation[]>([]);
 
   useEffect(() => {
@@ -119,18 +207,8 @@ function Waveform({ active }: { active: boolean }) {
       loopsRef.current = bars.map((bar, i) => {
         const loop = Animated.loop(
           Animated.sequence([
-            Animated.timing(bar, {
-              toValue: 0.25 + Math.random() * 0.75,
-              duration: 180 + i * 70,
-              easing: Easing.inOut(Easing.sin),
-              useNativeDriver: false,
-            }),
-            Animated.timing(bar, {
-              toValue: 0.1 + Math.random() * 0.3,
-              duration: 180 + i * 55,
-              easing: Easing.inOut(Easing.sin),
-              useNativeDriver: false,
-            }),
+            Animated.timing(bar, { toValue: 0.25 + Math.random() * 0.75, duration: 180 + i * 70, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
+            Animated.timing(bar, { toValue: 0.1 + Math.random() * 0.3,  duration: 180 + i * 55, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
           ])
         );
         setTimeout(() => loop.start(), i * 70);
@@ -138,9 +216,7 @@ function Waveform({ active }: { active: boolean }) {
       });
     } else {
       loopsRef.current.forEach(l => l.stop());
-      bars.forEach(bar =>
-        Animated.timing(bar, { toValue: 0.15, duration: 400, useNativeDriver: false }).start()
-      );
+      bars.forEach(bar => Animated.timing(bar, { toValue: 0.15, duration: 400, useNativeDriver: false }).start());
     }
     return () => loopsRef.current.forEach(l => l.stop());
   }, [active]);
@@ -148,17 +224,11 @@ function Waveform({ active }: { active: boolean }) {
   return (
     <View style={wv.wrap}>
       {bars.map((bar, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            wv.bar,
-            {
-              height: bar.interpolate({ inputRange: [0, 1], outputRange: [3, 26] }),
-              opacity: bar.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
-              backgroundColor: active ? P.accent : P.textSec,
-            },
-          ]}
-        />
+        <Animated.View key={i} style={[wv.bar, {
+          height:  bar.interpolate({ inputRange: [0, 1], outputRange: [3, 26] }),
+          opacity: bar.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+          backgroundColor: active ? color : P.textSec,
+        }]} />
       ))}
     </View>
   );
@@ -168,29 +238,21 @@ const wv = StyleSheet.create({
   bar:  { width: 3.5, borderRadius: 2 },
 });
 
-// ─── Typing dots component ────────────────────────────────────────────────────
+// ─── Typing dots ──────────────────────────────────────────────────────────────
 function TypingDots() {
-  const dots = useRef([
-    new Animated.Value(0),
-    new Animated.Value(0),
-    new Animated.Value(0),
-  ]).current;
-
+  const dots = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
   useEffect(() => {
     const anims = dots.map((dot, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 160),
-          Animated.timing(dot, { toValue: -7, duration: 280, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0,  duration: 280, useNativeDriver: true }),
-          Animated.delay(480),
-        ])
-      )
+      Animated.loop(Animated.sequence([
+        Animated.delay(i * 160),
+        Animated.timing(dot, { toValue: -7, duration: 280, useNativeDriver: true }),
+        Animated.timing(dot, { toValue: 0,  duration: 280, useNativeDriver: true }),
+        Animated.delay(480),
+      ]))
     );
     anims.forEach(a => a.start());
     return () => anims.forEach(a => a.stop());
   }, []);
-
   return (
     <View style={td.wrap}>
       {dots.map((dot, i) => (
@@ -208,44 +270,52 @@ const td = StyleSheet.create({
 export default function AICallScreen() {
   const { addEntry }                = useHealthData();
   const { upcomingMeds, markTaken } = useMedications();
+  const { user }                    = useAuth();
+  const { profile }                 = useUserProfile();
+
+  const preferredLang = (profile?.preferredLanguage ?? 'en') as PreferredLanguage;
+  const langCodes     = getLangCodes(preferredLang);
 
   const [inCall,        setInCall]        = useState(false);
   const [callMode,      setCallMode]      = useState<CallMode | null>(null);
   const [incoming,      setIncoming]      = useState(false);
   const [connected,     setConnected]     = useState(false);
   const [muted,         setMuted]         = useState(false);
-  const [speaker,       setSpeaker]       = useState(false);
   const [messages,      setMessages]      = useState<Message[]>([]);
   const [userInput,     setUserInput]     = useState('');
   const [agentTyping,   setAgentTyping]   = useState(false);
   const [detectedSugar, setDetectedSugar] = useState<number | null>(null);
   const [callEnded,     setCallEnded]     = useState(false);
-  const [SpeechModule,  setSpeechModule]  = useState<any>(null);
   const [seconds,       setSeconds]       = useState(0);
 
-  const secondsRef = useRef(0);
-  const timerRef   = useRef<any>(null);
-  const scrollRef  = useRef<ScrollView>(null);
-  const apiHistory = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  // Voice recording state
+  const [isRecording,   setIsRecording]   = useState(false);
+  const [isTranscribing,setIsTranscribing]= useState(false);
+  const [pendingVoice,  setPendingVoice]  = useState('');
 
-  // Triple-ring animations
+  const recordingRef  = useRef<Audio.Recording | null>(null);
+  const soundRef      = useRef<Audio.Sound | null>(null);
+  const secondsRef    = useRef(0);
+  const timerRef      = useRef<any>(null);
+  const scrollRef     = useRef<ScrollView>(null);
+  const geminiHistory = useRef<{ role: 'user' | 'model'; parts: { text: string }[] }[]>([]);
+
+  // Animations
   const ring1      = useRef(new Animated.Value(0)).current;
   const ring2      = useRef(new Animated.Value(0)).current;
   const ring3      = useRef(new Animated.Value(0)).current;
   const ringLoops  = useRef<Animated.CompositeAnimation[]>([]);
-
-  // Connected status dot pulse
   const statusPulse = useRef(new Animated.Value(1)).current;
+  const micPulse    = useRef(new Animated.Value(1)).current;
 
+  // Request audio permissions on mount
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const mod = await import('expo-speech');
-        if (mounted) setSpeechModule(mod);
-      } catch (e) { console.warn('expo-speech unavailable'); }
-    })();
-    return () => { mounted = false; stopRing(); stopTimer(); };
+    Audio.requestPermissionsAsync().catch(() => {});
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    }).catch(() => {});
+    return () => { stopRing(); stopTimer(); cleanupAudio(); };
   }, []);
 
   useEffect(() => {
@@ -254,32 +324,108 @@ export default function AICallScreen() {
 
   useEffect(() => {
     if (!connected) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(statusPulse, { toValue: 0.25, duration: 900, useNativeDriver: true }),
-        Animated.timing(statusPulse, { toValue: 1,    duration: 900, useNativeDriver: true }),
-      ])
-    );
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(statusPulse, { toValue: 0.25, duration: 900, useNativeDriver: true }),
+      Animated.timing(statusPulse, { toValue: 1,    duration: 900, useNativeDriver: true }),
+    ]));
     loop.start();
     return () => loop.stop();
   }, [connected]);
 
-  // ─── Ring animation ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isRecording) { micPulse.setValue(1); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(micPulse, { toValue: 1.3, duration: 600, useNativeDriver: true }),
+      Animated.timing(micPulse, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [isRecording]);
 
+  // ─── Audio helpers ──────────────────────────────────────────────────────
+  async function cleanupAudio() {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    } catch (_) {}
+  }
+
+  async function playAudio(path: string) {
+    if (muted) return;
+    try {
+      await cleanupAudio();
+      const { sound } = await Audio.Sound.createAsync({ uri: path });
+      soundRef.current = sound;
+      await sound.playAsync();
+    } catch (e) {
+      console.warn('Audio play error:', e);
+    }
+  }
+
+  async function speak(text: string) {
+    if (muted) return;
+    const clean = cleanAgentText(text);
+    const path  = await synthesizeSpeech(clean, langCodes.tts);
+    if (path) await playAudio(path);
+  }
+
+  // ─── Recording ──────────────────────────────────────────────────────────
+  async function startRecording() {
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+      setIsRecording(true);
+      setPendingVoice('');
+    } catch (e) {
+      Alert.alert('Mic Error', 'Could not start recording. Please check microphone permissions.');
+    }
+  }
+
+  async function stopRecording() {
+    if (!recordingRef.current) return;
+    setIsRecording(false);
+    setIsTranscribing(true);
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+
+      if (!uri) { setIsTranscribing(false); return; }
+
+      // Read as base64
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const transcript = await transcribeSpeech(base64, langCodes.stt);
+      if (transcript) {
+        setPendingVoice(transcript);
+        setUserInput(transcript);
+      } else {
+        Alert.alert('Could not understand', 'Please speak clearly and try again.');
+      }
+    } catch (e) {
+      console.warn('Recording stop error:', e);
+    } finally {
+      setIsTranscribing(false);
+    }
+  }
+
+  // ─── Ring & Timer ────────────────────────────────────────────────────────
   function startRing() {
     [ring1, ring2, ring3].forEach(r => r.setValue(0));
     ringLoops.current = [ring1, ring2, ring3].map((anim, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 500),
-          Animated.timing(anim, {
-            toValue: 1, duration: 1600,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.delay(400),
-        ])
-      )
+      Animated.loop(Animated.sequence([
+        Animated.delay(i * 500),
+        Animated.timing(anim, { toValue: 1, duration: 1600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.delay(400),
+      ]))
     );
     ringLoops.current.forEach(l => l.start());
   }
@@ -288,37 +434,21 @@ export default function AICallScreen() {
     try { ringLoops.current.forEach(l => l.stop()); } catch (_) {}
   }
 
-  // ─── Timer ────────────────────────────────────────────────────────────────
-
   function startTimer() {
     stopTimer(); secondsRef.current = 0; setSeconds(0);
-    timerRef.current = setInterval(() => {
-      secondsRef.current += 1; setSeconds(secondsRef.current);
-    }, 1000);
+    timerRef.current = setInterval(() => { secondsRef.current += 1; setSeconds(secondsRef.current); }, 1000);
   }
+
   function stopTimer() {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }
 
-  // ─── TTS ──────────────────────────────────────────────────────────────────
-
-  function speak(text: string) {
-    if (!SpeechModule || muted) return;
-    try {
-      SpeechModule.stop();
-      const hasHindi = /[\u0900-\u097F]/.test(text);
-      SpeechModule.speak(text, { language: hasHindi ? 'hi-IN' : 'en-IN', pitch: 1.0, rate: 0.9 });
-    } catch (e) { console.warn('TTS error:', e); }
-  }
-
-  // ─── Call lifecycle ───────────────────────────────────────────────────────
-
+  // ─── Call lifecycle ──────────────────────────────────────────────────────
   function startCallWithMode(mode: CallMode) {
     setCallMode(mode); setInCall(true); setIncoming(true);
     setMessages([]); setDetectedSugar(null); setCallEnded(false);
-    apiHistory.current = [];
+    geminiHistory.current = [];
     startRing();
-    speak(mode === 'meds' ? 'ElderEase reminder incoming' : 'AI health call incoming');
   }
 
   async function acceptCall() {
@@ -327,20 +457,24 @@ export default function AICallScreen() {
     stopRing(); startTimer();
 
     const medList = upcomingMeds?.map(m => `${m.name} at ${m.time}`).join(', ') || '';
-    const system  = buildSystemPrompt(callMode, medList);
+    const system  = buildSystemPrompt(callMode, medList, preferredLang);
 
     setAgentTyping(true);
     try {
-      const openingHistory: { role: 'user'; content: string }[] = [
-        { role: 'user', content: '[Call connected. Please greet the patient and start the conversation.]' },
-      ];
-      const agentReply = await callGroqAgent(system, openingHistory);
+      const openingMsg = { role: 'user' as const, parts: [{ text: '[Call connected. Please greet the patient warmly and start the conversation.]' }] };
+      geminiHistory.current = [openingMsg];
+      const agentReply = await callGeminiAgent(system, geminiHistory.current);
+      geminiHistory.current.push({ role: 'model', parts: [{ text: agentReply }] });
       const cleanReply = cleanAgentText(agentReply);
-      apiHistory.current = [...openingHistory, { role: 'assistant', content: agentReply }];
       setMessages([{ role: 'agent', text: cleanReply }]);
-      speak(cleanReply);
+      await speak(agentReply);
     } catch (_) {
-      setMessages([{ role: 'agent', text: 'Hello! This is ElderEase. How are you today?' }]);
+      const fallback = preferredLang === 'hi'
+        ? 'नमस्ते! मैं ElderEase हूँ। आप कैसे हैं?'
+        : preferredLang === 'mr'
+        ? 'नमस्कार! मी ElderEase आहे. आपण कसे आहात?'
+        : 'Hello! This is ElderEase. How are you today?';
+      setMessages([{ role: 'agent', text: fallback }]);
     } finally { setAgentTyping(false); }
   }
 
@@ -351,51 +485,49 @@ export default function AICallScreen() {
 
   function endCall() {
     stopTimer();
-    try { SpeechModule?.stop(); } catch (_) {}
+    cleanupAudio();
+    if (isRecording) stopRecording();
     setConnected(false); setCallEnded(true);
   }
 
   function dismissCall() {
     setInCall(false); setCallMode(null); setCallEnded(false);
-    setMessages([]); apiHistory.current = [];
+    setMessages([]); geminiHistory.current = [];
+    setPendingVoice(''); setUserInput('');
   }
 
-  // ─── Send message ─────────────────────────────────────────────────────────
-
+  // ─── Send message ────────────────────────────────────────────────────────
   async function sendMessage(overrideText?: string) {
     const text = (overrideText ?? userInput).trim();
     if (!text || agentTyping || !callMode) return;
-    if (!overrideText) setUserInput('');
+    setUserInput(''); setPendingVoice('');
 
     setMessages(prev => [...prev, { role: 'user', text }]);
-    apiHistory.current = [...apiHistory.current, { role: 'user', content: text }];
+    geminiHistory.current.push({ role: 'user', parts: [{ text }] });
 
     const medList = upcomingMeds?.map(m => `${m.name} at ${m.time}`).join(', ') || '';
-    const system  = buildSystemPrompt(callMode, medList);
+    const system  = buildSystemPrompt(callMode, medList, preferredLang);
 
     setAgentTyping(true);
     try {
-      const agentReply = await callGroqAgent(system, apiHistory.current);
+      const agentReply = await callGeminiAgent(system, geminiHistory.current);
       const sugar      = extractSugarTag(agentReply);
       if (sugar) setDetectedSugar(sugar);
       const cleanReply = cleanAgentText(agentReply);
-      apiHistory.current = [...apiHistory.current, { role: 'assistant', content: agentReply }];
+      geminiHistory.current.push({ role: 'model', parts: [{ text: agentReply }] });
       setMessages(prev => [...prev, { role: 'agent', text: cleanReply }]);
-      speak(cleanReply);
-      if (/bye|goodbye|take care|have a (good|wonderful|great)|god bless/i.test(cleanReply)) {
+      await speak(agentReply);
+      if (/bye|goodbye|take care|धन्यवाद|ठीक है|नमस्ते|धन्यवाद|निरोगी राहा/i.test(cleanReply)) {
         setTimeout(() => endCall(), 3500);
       }
     } catch (_) {
-      setMessages(prev => [
-        ...prev,
-        { role: 'agent', text: 'Sorry, connection issue. Please try again.' },
-      ]);
+      setMessages(prev => [...prev, { role: 'agent', text: 'Sorry, connection issue. Please try again.' }]);
     } finally { setAgentTyping(false); }
   }
 
   async function handleMarkAllTaken() {
     upcomingMeds?.forEach(m => markTaken(m.id));
-    sendMessage('I have taken all my medicines.');
+    sendMessage(preferredLang === 'hi' ? 'मैंने सभी दवाइयाँ ले ली हैं।' : preferredLang === 'mr' ? 'मी सर्व औषधे घेतली आहेत.' : 'I have taken all my medicines.');
   }
 
   function saveSugar() {
@@ -403,109 +535,106 @@ export default function AICallScreen() {
       Alert.alert('No reading detected', 'Tell the agent your blood sugar number during the call.');
       return;
     }
-    const transcript = messages
-      .map(m => `${m.role === 'agent' ? 'Agent' : 'You'}: ${m.text}`)
-      .join('\n');
+    const transcript = messages.map(m => `${m.role === 'agent' ? 'Agent' : 'You'}: ${m.text}`).join('\n');
     addEntry({ value: detectedSugar, unit: 'mg/dL', source: 'ai-call', transcript });
     Alert.alert('Saved!', `Blood sugar ${detectedSugar} mg/dL saved.`, [
       { text: 'OK', onPress: () => router.replace('/(tabs)/emergency') },
     ]);
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  const mmss =
-    `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
-
+  const mmss = `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
   const makeRingStyle = (anim: Animated.Value) => ({
     transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [1, 2.6] }) }],
     opacity:   anim.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0.55, 0.2, 0] }),
   });
 
+  // Quick reply chips per language
+  const medChips  = preferredLang === 'hi'
+    ? ['हाँ, ले ली', 'अभी नहीं', 'मुझे मदद चाहिए']
+    : preferredLang === 'mr'
+    ? ['हो, घेतल्या', 'अजून नाही', 'मला मदत हवी']
+    : ['Yes, I took it', 'Not yet', 'I need help'];
+
+  const sugarChips = preferredLang === 'hi'
+    ? ['मेरी शुगर 110 है', 'मेरी शुगर 140 है', 'मेरी शुगर 200 है', 'मैंने जांच नहीं की']
+    : preferredLang === 'mr'
+    ? ['माझी शुगर 110 आहे', 'माझी शुगर 140 आहे', 'माझी शुगर 200 आहे', 'मी तपासले नाही']
+    : ['My sugar is 110', 'My sugar is 140', 'My sugar is 200', 'I did not check'];
+
   // ═══════════════════════════════════════════════════════════════════════════
   // IDLE SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
-
   if (!inCall) {
     return (
       <View style={s.screen}>
         <View style={s.orb1} />
         <View style={s.orb2} />
-
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={s.idleContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Badge + title */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.idleContent} showsVerticalScrollIndicator={false}>
           <View style={s.idleHeader}>
             <View style={s.aiBadge}>
               <View style={s.aiBadgeDot} />
-              <Text style={s.aiBadgeText}>AI POWERED · GROQ</Text>
+              <Text style={s.aiBadgeText}>AI POWERED · GEMINI</Text>
             </View>
             <Text style={s.heroTitle}>Health{'\n'}Calls</Text>
             <Text style={s.heroSub}>
-              Your personal AI companion.{'\n'}Speaks Hindi & English, available 24/7.
+              Your personal AI companion.{'\n'}
+              {preferredLang === 'hi' ? 'हिंदी, मराठी और English में उपलब्ध।' :
+               preferredLang === 'mr' ? 'हिंदी, मराठी आणि English मध्ये उपलब्ध.' :
+               'Speaks Hindi, Marathi & English, available 24/7.'}
             </Text>
           </View>
 
-          {/* Medication card */}
-          <TouchableOpacity
-            style={s.callCard}
-            onPress={() => startCallWithMode('meds')}
-            activeOpacity={0.85}
-          >
+          <TouchableOpacity style={s.callCard} onPress={() => startCallWithMode('meds')} activeOpacity={0.85}>
             <View style={[s.cardAccentBar, { backgroundColor: P.primary }]} />
             <View style={s.cardBody}>
               <View style={[s.cardIconWrap, { backgroundColor: '#0A1E3A' }]}>
                 <Text style={s.cardEmoji}>💊</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle}>Medication Reminder</Text>
+                <Text style={s.cardTitle}>
+                  {preferredLang === 'hi' ? 'दवाई रिमाइंडर' : preferredLang === 'mr' ? 'औषध स्मरण' : 'Medication Reminder'}
+                </Text>
                 <Text style={s.cardDesc}>
-                  AI confirms you've taken your medications and notifies your caregiver.
+                  {preferredLang === 'hi' ? 'AI आपकी दवाइयाँ लेने की पुष्टि करेगा।' :
+                   preferredLang === 'mr' ? 'AI तुमची औषधे घेण्याची पुष्टी करेल.' :
+                   'AI confirms you\'ve taken your medications.'}
                 </Text>
                 <View style={s.cardMeta}>
-                  <Text style={s.cardMetaText}>
-                    {upcomingMeds?.length ?? 0} med
-                    {(upcomingMeds?.length ?? 0) !== 1 ? 's' : ''} scheduled today
-                  </Text>
+                  <Text style={s.cardMetaText}>{upcomingMeds?.length ?? 0} meds today</Text>
                 </View>
               </View>
               <Text style={s.cardArrow}>›</Text>
             </View>
           </TouchableOpacity>
 
-          {/* Sugar card */}
-          <TouchableOpacity
-            style={[s.callCard, { borderColor: '#0A2B1E' }]}
-            onPress={() => startCallWithMode('sugar')}
-            activeOpacity={0.85}
-          >
+          <TouchableOpacity style={[s.callCard, { borderColor: '#0A2B1E' }]} onPress={() => startCallWithMode('sugar')} activeOpacity={0.85}>
             <View style={[s.cardAccentBar, { backgroundColor: P.accent }]} />
             <View style={s.cardBody}>
               <View style={[s.cardIconWrap, { backgroundColor: '#001E14' }]}>
                 <Text style={s.cardEmoji}>🩸</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle}>Blood Sugar Check</Text>
+                <Text style={s.cardTitle}>
+                  {preferredLang === 'hi' ? 'ब्लड शुगर जाँच' : preferredLang === 'mr' ? 'रक्त साखर तपासणी' : 'Blood Sugar Check'}
+                </Text>
                 <Text style={s.cardDesc}>
-                  Report your glucose reading. AI records it and flags anything unusual.
+                  {preferredLang === 'hi' ? 'अपनी शुगर रीडिंग बताएं। AI रिकॉर्ड करेगा।' :
+                   preferredLang === 'mr' ? 'तुमची शुगर रीडिंग सांगा. AI रेकॉर्ड करेल.' :
+                   'Report your glucose reading. AI records it.'}
                 </Text>
                 <View style={[s.cardMeta, { backgroundColor: '#001A10', borderColor: '#003020' }]}>
-                  <Text style={[s.cardMetaText, { color: P.accent }]}>Normal: 80 – 140 mg/dL</Text>
+                  <Text style={[s.cardMetaText, { color: P.accent }]}>Normal: 80–140 mg/dL</Text>
                 </View>
               </View>
               <Text style={[s.cardArrow, { color: P.accent }]}>›</Text>
             </View>
           </TouchableOpacity>
 
-          {/* Feature chips */}
           <View style={s.featureRow}>
             {[
-              { icon: '🌐', text: 'Hindi & English' },
-              { icon: '🔒', text: 'Private' },
-              { icon: '⚡', text: 'Instant' },
+              { icon: '🎤', text: 'Voice Input' },
+              { icon: '🔊', text: 'Natural TTS' },
+              { icon: '🌐', text: 'Hindi · Marathi · English' },
             ].map(f => (
               <View key={f.text} style={s.featureChip}>
                 <Text style={s.featureIcon}>{f.icon}</Text>
@@ -521,20 +650,15 @@ export default function AICallScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
   // INCOMING SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
-
   if (inCall && incoming) {
     return (
       <View style={s.incomingScreen}>
-        {/* Triple ring pulses */}
         <Animated.View style={[s.ringCircle, { backgroundColor: 'rgba(74,143,246,0.45)' }, makeRingStyle(ring1)]} />
         <Animated.View style={[s.ringCircle, { backgroundColor: 'rgba(74,143,246,0.30)' }, makeRingStyle(ring2)]} />
         <Animated.View style={[s.ringCircle, { backgroundColor: 'rgba(74,143,246,0.15)' }, makeRingStyle(ring3)]} />
 
-        {/* Avatar */}
         <View style={s.incomingAvatarOuter}>
-          <View style={s.incomingAvatarInner}>
-            <AICallLogo size={52} />
-          </View>
+          <View style={s.incomingAvatarInner}><AICallLogo size={52} /></View>
         </View>
 
         <View style={s.incomingLabelRow}>
@@ -542,15 +666,10 @@ export default function AICallScreen() {
           <Text style={s.incomingCallLabel}>INCOMING CALL</Text>
         </View>
 
-        <Text style={s.incomingName}>
-          {callMode === 'meds' ? 'ElderEase' : 'AI Health Check'}
-        </Text>
-        <Text style={s.incomingSubtitle}>
-          {callMode === 'meds' ? '💊  Medication Reminder' : '🩸  Blood Sugar Check'}
-        </Text>
-        <Text style={s.incomingPowered}>llama-3.3-70b · Groq Cloud</Text>
+        <Text style={s.incomingName}>{callMode === 'meds' ? 'ElderEase' : 'AI Health Check'}</Text>
+        <Text style={s.incomingSubtitle}>{callMode === 'meds' ? '💊  Medication Reminder' : '🩸  Blood Sugar Check'}</Text>
+        <Text style={s.incomingPowered}>Gemini 1.5 Flash · Google AI</Text>
 
-        {/* Action buttons */}
         <View style={s.incomingActions}>
           <View style={s.incomingBtnGroup}>
             <Pressable style={[s.incomingBtn, s.declineBtn]} onPress={declineCall}>
@@ -572,13 +691,12 @@ export default function AICallScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
   // SUMMARY SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
-
   if (inCall && callEnded) {
     return (
       <View style={s.summaryScreen}>
-        <Text style={s.summaryTitle}>Call Summary</Text>
-
-        {/* Stats row */}
+        <Text style={s.summaryTitle}>
+          {preferredLang === 'hi' ? 'कॉल सारांश' : preferredLang === 'mr' ? 'कॉल सारांश' : 'Call Summary'}
+        </Text>
         <View style={s.statsRow}>
           <View style={s.statCard}>
             <Text style={s.statValue}>{mmss}</Text>
@@ -604,16 +722,10 @@ export default function AICallScreen() {
         </View>
 
         <Text style={s.transcriptLabel}>TRANSCRIPT</Text>
-
         <ScrollView style={s.summScroll} showsVerticalScrollIndicator={false}>
           {messages.map((msg, i) => (
-            <View
-              key={i}
-              style={[s.summBubble, msg.role === 'agent' ? s.summAgent : s.summUser]}
-            >
-              <Text style={s.summRole}>
-                {msg.role === 'agent' ? '🤖  ElderEase' : '👤  You'}
-              </Text>
+            <View key={i} style={[s.summBubble, msg.role === 'agent' ? s.summAgent : s.summUser]}>
+              <Text style={s.summRole}>{msg.role === 'agent' ? '🤖  ElderEase' : '👤  You'}</Text>
               <Text style={s.summText}>{msg.text}</Text>
             </View>
           ))}
@@ -629,7 +741,6 @@ export default function AICallScreen() {
             <Text style={s.saveBtnText}>✅  Mark All Meds as Taken</Text>
           </TouchableOpacity>
         )}
-
         <TouchableOpacity style={s.doneBtn} onPress={dismissCall} activeOpacity={0.85}>
           <Text style={s.doneBtnText}>Done</Text>
         </TouchableOpacity>
@@ -640,34 +751,22 @@ export default function AICallScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
   // CONNECTED / ACTIVE CALL
   // ═══════════════════════════════════════════════════════════════════════════
-
   if (inCall && connected) {
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={90}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={90}>
         <View style={s.connScreen}>
 
-          {/* ── Header ──────────────────────────────────────────────────── */}
+          {/* Header */}
           <View style={s.connHeader}>
-            <View style={s.connAvatarWrap}>
-              <AICallLogo size={28} />
-            </View>
+            <View style={s.connAvatarWrap}><AICallLogo size={28} /></View>
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={s.connName}>
-                {callMode === 'meds' ? 'ElderEase Reminder' : 'AI Health Check'}
-              </Text>
+              <Text style={s.connName}>{callMode === 'meds' ? 'ElderEase Reminder' : 'AI Health Check'}</Text>
               <View style={s.connStatusRow}>
                 <Animated.View style={[s.connStatusDot, { opacity: statusPulse }]} />
                 <Text style={s.connStatusText}>{mmss} · Connected</Text>
               </View>
             </View>
-
-            {/* Waveform — animates while agent is typing */}
             <Waveform active={agentTyping} />
-
             {detectedSugar ? (
               <View style={s.sugarBadge}>
                 <Text style={s.sugarVal}>{detectedSugar}</Text>
@@ -678,38 +777,31 @@ export default function AICallScreen() {
 
           <View style={s.divider} />
 
-          {/* ── Chat ────────────────────────────────────────────────────── */}
-          <ScrollView
-            ref={scrollRef}
-            style={s.chatScroll}
-            contentContainerStyle={s.chatContent}
-            showsVerticalScrollIndicator={false}
-          >
+          {/* Chat */}
+          <ScrollView ref={scrollRef} style={s.chatScroll} contentContainerStyle={s.chatContent} showsVerticalScrollIndicator={false}>
             {messages.map((msg, i) => (
-              <View
-                key={i}
-                style={[s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowAgent]}
-              >
+              <View key={i} style={[s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowAgent]}>
                 {msg.role === 'agent' && (
-                  <View style={s.agentPip}>
-                    <Text style={s.agentPipText}>E</Text>
-                  </View>
+                  <View style={s.agentPip}><Text style={s.agentPipText}>E</Text></View>
                 )}
                 <View style={[s.msgBubble, msg.role === 'agent' ? s.agentBubble : s.userBubble]}>
-                  <Text style={[s.msgText, msg.role === 'user' && s.msgTextUser]}>
-                    {msg.text}
-                  </Text>
+                  <Text style={[s.msgText, msg.role === 'user' && s.msgTextUser]}>{msg.text}</Text>
                 </View>
               </View>
             ))}
 
             {agentTyping && (
               <View style={[s.msgRow, s.msgRowAgent]}>
-                <View style={s.agentPip}>
-                  <Text style={s.agentPipText}>E</Text>
-                </View>
-                <View style={[s.msgBubble, s.agentBubble]}>
-                  <TypingDots />
+                <View style={s.agentPip}><Text style={s.agentPipText}>E</Text></View>
+                <View style={[s.msgBubble, s.agentBubble]}><TypingDots /></View>
+              </View>
+            )}
+
+            {/* Transcribing indicator */}
+            {isTranscribing && (
+              <View style={[s.msgRow, s.msgRowUser]}>
+                <View style={[s.msgBubble, s.userBubble, { opacity: 0.6 }]}>
+                  <Text style={s.msgTextUser}>🎤 Transcribing…</Text>
                 </View>
               </View>
             )}
@@ -717,12 +809,8 @@ export default function AICallScreen() {
             {/* Quick-reply chips */}
             {callMode === 'meds' && messages.length > 0 && !agentTyping && (
               <View style={s.chipRow}>
-                {['Yes, I took it', 'Not yet', 'I need help'].map(chip => (
-                  <TouchableOpacity
-                    key={chip}
-                    style={s.chip}
-                    onPress={() => setUserInput(chip)}
-                  >
+                {medChips.map(chip => (
+                  <TouchableOpacity key={chip} style={s.chip} onPress={() => setUserInput(chip)}>
                     <Text style={s.chipText}>{chip}</Text>
                   </TouchableOpacity>
                 ))}
@@ -730,12 +818,8 @@ export default function AICallScreen() {
             )}
             {callMode === 'sugar' && messages.length > 0 && !agentTyping && !detectedSugar && (
               <View style={s.chipRow}>
-                {['My sugar is 110', 'My sugar is 140', 'My sugar is 200', 'I did not check'].map(chip => (
-                  <TouchableOpacity
-                    key={chip}
-                    style={s.chip}
-                    onPress={() => setUserInput(chip)}
-                  >
+                {sugarChips.map(chip => (
+                  <TouchableOpacity key={chip} style={s.chip} onPress={() => setUserInput(chip)}>
                     <Text style={s.chipText}>{chip}</Text>
                   </TouchableOpacity>
                 ))}
@@ -743,17 +827,33 @@ export default function AICallScreen() {
             )}
           </ScrollView>
 
-          {/* ── Input bar ───────────────────────────────────────────────── */}
+          {/* Input bar with mic */}
           <View style={s.inputBar}>
+            {/* Mic button */}
+            <Animated.View style={{ transform: [{ scale: micPulse }] }}>
+              <TouchableOpacity
+                style={[s.micBtn, isRecording && s.micBtnActive]}
+                onPress={isRecording ? stopRecording : startRecording}
+                disabled={agentTyping || isTranscribing}
+              >
+                <Text style={s.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
+              </TouchableOpacity>
+            </Animated.View>
+
             <TextInput
               style={s.textInput}
               value={userInput}
               onChangeText={setUserInput}
-              placeholder="Type your reply…"
-              placeholderTextColor={P.textSec}
+              placeholder={
+                isRecording ? (preferredLang === 'hi' ? 'सुन रहा हूँ…' : preferredLang === 'mr' ? 'ऐकत आहे…' : 'Listening…') :
+                isTranscribing ? 'Transcribing…' :
+                preferredLang === 'hi' ? 'जवाब लिखें…' :
+                preferredLang === 'mr' ? 'उत्तर लिहा…' : 'Type your reply…'
+              }
+              placeholderTextColor={isRecording ? P.micActive : P.textSec}
               onSubmitEditing={() => sendMessage()}
               returnKeyType="send"
-              editable={!agentTyping}
+              editable={!agentTyping && !isRecording && !isTranscribing}
             />
             <TouchableOpacity
               style={[s.sendBtn, (!userInput.trim() || agentTyping) && s.sendBtnDisabled]}
@@ -764,13 +864,26 @@ export default function AICallScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── Controls ────────────────────────────────────────────────── */}
+          {/* Voice confirm banner */}
+          {pendingVoice && !isRecording && !isTranscribing && (
+            <View style={s.voiceBanner}>
+              <Text style={s.voiceBannerText} numberOfLines={2}>🎤 "{pendingVoice}"</Text>
+              <View style={s.voiceBannerActions}>
+                <TouchableOpacity style={s.voiceConfirmBtn} onPress={() => sendMessage()}>
+                  <Text style={s.voiceConfirmText}>Send ✓</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.voiceCancelBtn} onPress={() => { setPendingVoice(''); setUserInput(''); }}>
+                  <Text style={s.voiceCancelText}>Clear ✕</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Controls */}
           <View style={s.controlBar}>
             <TouchableOpacity style={s.ctrlPill} onPress={() => setMuted(v => !v)}>
               <Text style={s.ctrlEmoji}>{muted ? '🔇' : '🔈'}</Text>
-              <Text style={[s.ctrlLabel, muted && { color: P.primary }]}>
-                {muted ? 'Muted' : 'Mute'}
-              </Text>
+              <Text style={[s.ctrlLabel, muted && { color: P.primary }]}>{muted ? 'Muted' : 'Mute'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={s.endCallBtn} onPress={endCall}>
@@ -778,9 +891,11 @@ export default function AICallScreen() {
               <Text style={s.endCallText}>End Call</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={s.ctrlPill} onPress={() => setSpeaker(v => !v)}>
-              <Text style={s.ctrlEmoji}>{speaker ? '🔊' : '📱'}</Text>
-              <Text style={[s.ctrlLabel, speaker && { color: P.accent }]}>Speaker</Text>
+            <TouchableOpacity style={s.ctrlPill} onPress={() => {}}>
+              <Text style={s.ctrlEmoji}>🌐</Text>
+              <Text style={s.ctrlLabel}>
+                {preferredLang === 'hi' ? 'हिंदी' : preferredLang === 'mr' ? 'मराठी' : 'English'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -793,262 +908,128 @@ export default function AICallScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-
   screen: { flex: 1, backgroundColor: P.bg },
+  orb1: { position: 'absolute', width: 340, height: 340, borderRadius: 170, backgroundColor: 'rgba(74,143,246,0.055)', top: -100, right: -80 },
+  orb2: { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(0,212,143,0.045)', bottom: 80, left: -90 },
 
-  // Ambient background orbs
-  orb1: {
-    position: 'absolute', width: 340, height: 340, borderRadius: 170,
-    backgroundColor: 'rgba(74,143,246,0.055)', top: -100, right: -80,
-  },
-  orb2: {
-    position: 'absolute', width: 260, height: 260, borderRadius: 130,
-    backgroundColor: 'rgba(0,212,143,0.045)', bottom: 80, left: -90,
-  },
-
-  // ── Idle ────────────────────────────────────────────────────────────────
   idleContent: { padding: 24, paddingTop: 62, paddingBottom: 40 },
   idleHeader:  { marginBottom: 36 },
-
   aiBadge:     { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 20 },
   aiBadgeDot:  { width: 7, height: 7, borderRadius: 4, backgroundColor: P.accent },
   aiBadgeText: { color: P.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
+  heroTitle:   { fontSize: 44, fontWeight: '900', color: P.textPri, letterSpacing: -1, lineHeight: 50, marginBottom: 12 },
+  heroSub:     { fontSize: 15, color: P.textSec, lineHeight: 24, maxWidth: SCREEN_W * 0.75 },
 
-  heroTitle: {
-    fontSize: 44, fontWeight: '900', color: P.textPri,
-    letterSpacing: -1, lineHeight: 50, marginBottom: 12,
-  },
-  heroSub: { fontSize: 15, color: P.textSec, lineHeight: 24, maxWidth: SCREEN_W * 0.75 },
-
-  callCard: {
-    backgroundColor: P.card, borderRadius: 22,
-    marginBottom: 16, borderWidth: 1, borderColor: P.border, overflow: 'hidden',
-  },
-  cardAccentBar: { height: 3 },
-  cardBody: { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 16 },
-  cardIconWrap: {
-    width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-  },
+  callCard:     { backgroundColor: P.card, borderRadius: 22, marginBottom: 16, borderWidth: 1, borderColor: P.border, overflow: 'hidden' },
+  cardAccentBar:{ height: 3 },
+  cardBody:     { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 16 },
+  cardIconWrap: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   cardEmoji:    { fontSize: 26 },
   cardTitle:    { color: P.textPri, fontSize: 16, fontWeight: '700', marginBottom: 5 },
   cardDesc:     { color: P.textSec, fontSize: 13, lineHeight: 19.5, marginBottom: 10 },
-  cardMeta: {
-    alignSelf: 'flex-start', backgroundColor: '#0A1D35',
-    borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4,
-    borderWidth: 1, borderColor: P.border,
-  },
+  cardMeta:     { alignSelf: 'flex-start', backgroundColor: '#0A1D35', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: P.border },
   cardMetaText: { color: P.textSec, fontSize: 11, fontWeight: '600' },
   cardArrow:    { color: P.primary, fontSize: 26, fontWeight: '300' },
+  featureRow:   { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 },
+  featureChip:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: P.surface, borderRadius: 22, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: P.border },
+  featureIcon:  { fontSize: 14 },
+  featureText:  { color: P.textSec, fontSize: 12, fontWeight: '500' },
 
-  featureRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 },
-  featureChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: P.surface, borderRadius: 22,
-    paddingHorizontal: 14, paddingVertical: 9,
-    borderWidth: 1, borderColor: P.border,
-  },
-  featureIcon: { fontSize: 14 },
-  featureText: { color: P.textSec, fontSize: 12, fontWeight: '500' },
+  incomingScreen:      { flex: 1, backgroundColor: '#020810', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  ringCircle:          { position: 'absolute', width: 148, height: 148, borderRadius: 74 },
+  incomingAvatarOuter: { width: 118, height: 118, borderRadius: 59, borderWidth: 1.5, borderColor: 'rgba(74,143,246,0.35)', alignItems: 'center', justifyContent: 'center', marginBottom: 36, shadowColor: P.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 24, elevation: 20, backgroundColor: '#090F1E' },
+  incomingAvatarInner: { width: 92, height: 92, borderRadius: 46, backgroundColor: P.card, alignItems: 'center', justifyContent: 'center' },
+  incomingLabelRow:    { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
+  incomingDot:         { width: 7, height: 7, borderRadius: 4, backgroundColor: P.primary },
+  incomingCallLabel:   { color: P.primary, fontSize: 11, fontWeight: '800', letterSpacing: 2, textTransform: 'uppercase' },
+  incomingName:        { color: P.textPri, fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginBottom: 8 },
+  incomingSubtitle:    { color: P.textSec, fontSize: 15, marginBottom: 6 },
+  incomingPowered:     { color: '#1E2F48', fontSize: 11, marginBottom: 60 },
+  incomingActions:     { flexDirection: 'row', gap: 52 },
+  incomingBtnGroup:    { alignItems: 'center', gap: 10 },
+  incomingBtn:         { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center' },
+  declineBtn:          { backgroundColor: '#280810', borderWidth: 2, borderColor: '#6B1520', shadowColor: P.danger, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 14, elevation: 14 },
+  acceptBtn:           { backgroundColor: '#042415', borderWidth: 2, borderColor: '#136B3A', shadowColor: P.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 14, elevation: 14 },
+  incomingBtnIcon:     { color: P.textPri, fontSize: 26, fontWeight: '700' },
+  incomingBtnLabel:    { color: P.textSec, fontSize: 12, fontWeight: '600' },
 
-  // ── Incoming ──────────────────────────────────────────────────────────────
-  incomingScreen: {
-    flex: 1, backgroundColor: '#020810',
-    alignItems: 'center', justifyContent: 'center', padding: 24,
-  },
-  ringCircle: { position: 'absolute', width: 148, height: 148, borderRadius: 74 },
-
-  incomingAvatarOuter: {
-    width: 118, height: 118, borderRadius: 59,
-    borderWidth: 1.5, borderColor: 'rgba(74,143,246,0.35)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 36,
-    shadowColor: P.primary, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7, shadowRadius: 24, elevation: 20,
-    backgroundColor: '#090F1E',
-  },
-  incomingAvatarInner: {
-    width: 92, height: 92, borderRadius: 46,
-    backgroundColor: P.card, alignItems: 'center', justifyContent: 'center',
-  },
-
-  incomingLabelRow:  { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
-  incomingDot:       { width: 7, height: 7, borderRadius: 4, backgroundColor: P.primary },
-  incomingCallLabel: {
-    color: P.primary, fontSize: 11, fontWeight: '800',
-    letterSpacing: 2, textTransform: 'uppercase',
-  },
-  incomingName:     { color: P.textPri, fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginBottom: 8 },
-  incomingSubtitle: { color: P.textSec, fontSize: 15, marginBottom: 6 },
-  incomingPowered:  { color: '#1E2F48', fontSize: 11, marginBottom: 60 },
-
-  incomingActions:  { flexDirection: 'row', gap: 52 },
-  incomingBtnGroup: { alignItems: 'center', gap: 10 },
-  incomingBtn: {
-    width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center',
-  },
-  declineBtn: {
-    backgroundColor: '#280810', borderWidth: 2, borderColor: '#6B1520',
-    shadowColor: P.danger, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6, shadowRadius: 14, elevation: 14,
-  },
-  acceptBtn: {
-    backgroundColor: '#042415', borderWidth: 2, borderColor: '#136B3A',
-    shadowColor: P.accent, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6, shadowRadius: 14, elevation: 14,
-  },
-  incomingBtnIcon:  { color: P.textPri, fontSize: 26, fontWeight: '700' },
-  incomingBtnLabel: { color: P.textSec, fontSize: 12, fontWeight: '600' },
-
-  // ── Connected ─────────────────────────────────────────────────────────────
-  connScreen: {
-    flex: 1, backgroundColor: P.bg,
-    paddingTop: Platform.OS === 'ios' ? 52 : 28,
-  },
-  connHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 18, paddingBottom: 14,
-  },
-  connAvatarWrap: {
-    width: 46, height: 46, borderRadius: 23,
-    backgroundColor: P.card, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: P.border,
-  },
-  connName: { color: P.textPri, fontSize: 14, fontWeight: '700' },
+  connScreen:    { flex: 1, backgroundColor: P.bg, paddingTop: Platform.OS === 'ios' ? 52 : 28 },
+  connHeader:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 14 },
+  connAvatarWrap:{ width: 46, height: 46, borderRadius: 23, backgroundColor: P.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: P.border },
+  connName:      { color: P.textPri, fontSize: 14, fontWeight: '700' },
   connStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  connStatusDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: P.accent },
-  connStatusText: { color: P.textSec, fontSize: 11 },
+  connStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: P.accent },
+  connStatusText:{ color: P.textSec, fontSize: 11 },
+  divider:       { height: 1, backgroundColor: P.border, marginHorizontal: 18, marginBottom: 4 },
+  sugarBadge:    { backgroundColor: 'rgba(0,212,143,0.12)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center', marginLeft: 8, borderWidth: 1, borderColor: 'rgba(0,212,143,0.25)' },
+  sugarVal:      { color: P.accent, fontSize: 14, fontWeight: '800', lineHeight: 17 },
+  sugarUnit:     { color: P.accent, fontSize: 9, fontWeight: '600', opacity: 0.8 },
 
-  divider: { height: 1, backgroundColor: P.border, marginHorizontal: 18, marginBottom: 4 },
-
-  sugarBadge: {
-    backgroundColor: 'rgba(0,212,143,0.12)',
-    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
-    alignItems: 'center', marginLeft: 8,
-    borderWidth: 1, borderColor: 'rgba(0,212,143,0.25)',
-  },
-  sugarVal:  { color: P.accent, fontSize: 14, fontWeight: '800', lineHeight: 17 },
-  sugarUnit: { color: P.accent, fontSize: 9, fontWeight: '600', opacity: 0.8 },
-
-  // Chat
-  chatScroll:  { flex: 1 },
-  chatContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, gap: 10 },
-
-  msgRow:      { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '86%' },
-  msgRowAgent: { alignSelf: 'flex-start' },
-  msgRowUser:  { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
-
-  agentPip: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#112240', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: P.border,
-  },
+  chatScroll:   { flex: 1 },
+  chatContent:  { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, gap: 10 },
+  msgRow:       { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '86%' },
+  msgRowAgent:  { alignSelf: 'flex-start' },
+  msgRowUser:   { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
+  agentPip:     { width: 24, height: 24, borderRadius: 12, backgroundColor: '#112240', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: P.border },
   agentPipText: { color: P.primary, fontSize: 10, fontWeight: '800' },
+  msgBubble:    { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, flexShrink: 1 },
+  agentBubble:  { backgroundColor: P.agentBg, borderBottomLeftRadius: 5, borderWidth: 1, borderColor: P.border },
+  userBubble:   { backgroundColor: P.userBg, borderBottomRightRadius: 5 },
+  msgText:      { color: '#D8E4FF', fontSize: 14, lineHeight: 21 },
+  msgTextUser:  { color: '#C8DEFF' },
 
-  msgBubble:   { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, flexShrink: 1 },
-  agentBubble: {
-    backgroundColor: P.agentBg, borderBottomLeftRadius: 5,
-    borderWidth: 1, borderColor: P.border,
-  },
-  userBubble:  { backgroundColor: P.userBg, borderBottomRightRadius: 5 },
-  msgText:     { color: '#D8E4FF', fontSize: 14, lineHeight: 21 },
-  msgTextUser: { color: '#C8DEFF' },
-
-  // Chips
-  chipRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
-    paddingHorizontal: 2, paddingTop: 4, paddingBottom: 6,
-  },
-  chip: {
-    backgroundColor: P.chipBg, borderRadius: 22,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: P.chipBorder,
-  },
+  chipRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 2, paddingTop: 4, paddingBottom: 6 },
+  chip:     { backgroundColor: P.chipBg, borderRadius: 22, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: P.chipBorder },
   chipText: { color: '#6688AA', fontSize: 12, fontWeight: '500' },
 
-  // Input
-  inputBar: {
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: P.bg,
-  },
-  textInput: {
-    flex: 1, backgroundColor: P.surface,
-    borderRadius: 26, paddingHorizontal: 18, paddingVertical: 12,
-    color: P.textPri, fontSize: 14,
-    borderWidth: 1, borderColor: P.border,
-  },
-  sendBtn: {
+  inputBar: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: P.bg, alignItems: 'center' },
+  micBtn: {
     width: 46, height: 46, borderRadius: 23,
-    backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center',
-    shadowColor: P.primary, shadowOffset: { width: 0, height: 4 },
+    backgroundColor: P.mic, alignItems: 'center', justifyContent: 'center',
+    shadowColor: P.mic, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
+  micBtnActive: {
+    backgroundColor: P.micActive,
+    shadowColor: P.micActive, shadowOpacity: 0.7,
+  },
+  micIcon: { fontSize: 18 },
+  textInput: { flex: 1, backgroundColor: P.surface, borderRadius: 26, paddingHorizontal: 18, paddingVertical: 12, color: P.textPri, fontSize: 14, borderWidth: 1, borderColor: P.border },
+  sendBtn:         { width: 46, height: 46, borderRadius: 23, backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center', shadowColor: P.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
   sendBtnDisabled: { opacity: 0.3, shadowOpacity: 0 },
   sendBtnIcon:     { color: '#fff', fontSize: 20, fontWeight: '800', marginTop: -1 },
 
-  // Controls
-  controlBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
-    backgroundColor: P.surface, borderTopWidth: 1, borderTopColor: P.border, gap: 10,
-  },
-  ctrlPill: {
-    flex: 1, alignItems: 'center', paddingVertical: 11,
-    backgroundColor: P.card, borderRadius: 16,
-    borderWidth: 1, borderColor: P.border, gap: 4,
-  },
-  ctrlEmoji: { fontSize: 20 },
-  ctrlLabel: { color: P.textSec, fontSize: 10, fontWeight: '600' },
+  // Voice confirm banner
+  voiceBanner: { backgroundColor: '#0A1E3A', borderTopWidth: 1, borderTopColor: P.border, paddingHorizontal: 16, paddingVertical: 10 },
+  voiceBannerText:    { color: P.textPri, fontSize: 13, marginBottom: 8 },
+  voiceBannerActions: { flexDirection: 'row', gap: 10 },
+  voiceConfirmBtn:    { flex: 1, backgroundColor: P.accent + '22', borderRadius: 10, paddingVertical: 8, alignItems: 'center', borderWidth: 1, borderColor: P.accent },
+  voiceConfirmText:   { color: P.accent, fontWeight: '700', fontSize: 13 },
+  voiceCancelBtn:     { flex: 1, backgroundColor: P.danger + '22', borderRadius: 10, paddingVertical: 8, alignItems: 'center', borderWidth: 1, borderColor: P.danger },
+  voiceCancelText:    { color: P.danger, fontWeight: '700', fontSize: 13 },
 
-  endCallBtn: {
-    flex: 1.3, backgroundColor: '#200810',
-    borderRadius: 16, paddingVertical: 12,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: '#5A1020',
-    shadowColor: P.danger, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5, shadowRadius: 10, elevation: 10, gap: 2,
-  },
+  controlBar:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, backgroundColor: P.surface, borderTopWidth: 1, borderTopColor: P.border, gap: 10 },
+  ctrlPill:    { flex: 1, alignItems: 'center', paddingVertical: 11, backgroundColor: P.card, borderRadius: 16, borderWidth: 1, borderColor: P.border, gap: 4 },
+  ctrlEmoji:   { fontSize: 20 },
+  ctrlLabel:   { color: P.textSec, fontSize: 10, fontWeight: '600' },
+  endCallBtn:  { flex: 1.3, backgroundColor: '#200810', borderRadius: 16, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#5A1020', shadowColor: P.danger, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 10, gap: 2 },
   endCallText: { color: '#FF6678', fontSize: 12, fontWeight: '700' },
 
-  // ── Summary ───────────────────────────────────────────────────────────────
-  summaryScreen: {
-    flex: 1, backgroundColor: P.bg,
-    paddingHorizontal: 22, paddingTop: Platform.OS === 'ios' ? 58 : 34, paddingBottom: 20,
-  },
-  summaryTitle: {
-    color: P.textPri, fontSize: 26, fontWeight: '900', letterSpacing: -0.5, marginBottom: 22,
-  },
-
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 26 },
-  statCard: {
-    flex: 1, backgroundColor: P.card, borderRadius: 18, paddingVertical: 16,
-    borderWidth: 1, borderColor: P.border, alignItems: 'center',
-  },
-  statValue: { color: P.primary, fontSize: 22, fontWeight: '800', lineHeight: 28 },
-  statLabel: { color: P.textSec, fontSize: 9, fontWeight: '700', letterSpacing: 1.2, marginTop: 4 },
-
-  transcriptLabel: {
-    color: P.textSec, fontSize: 10, fontWeight: '700', letterSpacing: 1.8,
-    textTransform: 'uppercase', marginBottom: 12,
-  },
-  summScroll:  { flex: 1, marginBottom: 16 },
-  summBubble:  { borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: P.border },
-  summAgent:   { backgroundColor: P.agentBg },
-  summUser:    { backgroundColor: '#0C1E40' },
-  summRole:    { color: P.textSec, fontSize: 10, fontWeight: '700', marginBottom: 6 },
-  summText:    { color: P.textPri, fontSize: 13, lineHeight: 20 },
-
-  saveBtn: {
-    backgroundColor: P.primary, borderRadius: 16, padding: 16,
-    alignItems: 'center', marginBottom: 10,
-    shadowColor: P.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
-  },
-  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-
-  doneBtn: {
-    backgroundColor: P.surface, borderRadius: 16, padding: 14,
-    alignItems: 'center', borderWidth: 1, borderColor: P.border,
-  },
-  doneBtnText: { color: P.textSec, fontSize: 14, fontWeight: '600' },
+  summaryScreen: { flex: 1, backgroundColor: P.bg, paddingHorizontal: 22, paddingTop: Platform.OS === 'ios' ? 58 : 34, paddingBottom: 20 },
+  summaryTitle:  { color: P.textPri, fontSize: 26, fontWeight: '900', letterSpacing: -0.5, marginBottom: 22 },
+  statsRow:      { flexDirection: 'row', gap: 12, marginBottom: 26 },
+  statCard:      { flex: 1, backgroundColor: P.card, borderRadius: 18, paddingVertical: 16, borderWidth: 1, borderColor: P.border, alignItems: 'center' },
+  statValue:     { color: P.primary, fontSize: 22, fontWeight: '800', lineHeight: 28 },
+  statLabel:     { color: P.textSec, fontSize: 9, fontWeight: '700', letterSpacing: 1.2, marginTop: 4 },
+  transcriptLabel:{ color: P.textSec, fontSize: 10, fontWeight: '700', letterSpacing: 1.8, textTransform: 'uppercase', marginBottom: 12 },
+  summScroll:    { flex: 1, marginBottom: 16 },
+  summBubble:    { borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: P.border },
+  summAgent:     { backgroundColor: P.agentBg },
+  summUser:      { backgroundColor: '#0C1E40' },
+  summRole:      { color: P.textSec, fontSize: 10, fontWeight: '700', marginBottom: 6 },
+  summText:      { color: P.textPri, fontSize: 13, lineHeight: 20 },
+  saveBtn:       { backgroundColor: P.primary, borderRadius: 16, padding: 16, alignItems: 'center', marginBottom: 10, shadowColor: P.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 8 },
+  saveBtnText:   { color: '#fff', fontSize: 15, fontWeight: '700' },
+  doneBtn:       { backgroundColor: P.surface, borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: P.border },
+  doneBtnText:   { color: P.textSec, fontSize: 14, fontWeight: '600' },
 });
