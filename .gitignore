@@ -50,3 +50,4 @@
     android/google-services.json
     android/
     eas.json
+node_modules
