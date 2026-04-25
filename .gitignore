@@ -2,6 +2,7 @@
 .env
 .env.example
 esa.json
+credentials.json
 
 
 # dependencies
