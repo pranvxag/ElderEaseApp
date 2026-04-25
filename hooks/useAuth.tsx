@@ -1,11 +1,11 @@
 import { auth, hasFirebaseConfig } from '@/lib/firebase';
 import {
-    signOut as firebaseSignOut,
-    GoogleAuthProvider,
-    onAuthStateChanged,
-    signInWithCredential,
-    signInWithPopup,
-    User,
+  signOut as firebaseSignOut,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithCredential,
+  signInWithPopup,
+  User,
 } from 'firebase/auth';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -130,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         const userInfo = await GoogleSignin.signIn();
-        const idToken = userInfo?.idToken;
+        const idToken = userInfo?.data?.idToken ?? userInfo?.idToken;
         if (!idToken) {
           return { ok: false, message: 'No idToken returned from Google Sign-In.' };
         }
