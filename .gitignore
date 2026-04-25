@@ -1,52 +1,52 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-.env
-.env.example
-esa.json
-credentials.json
+    # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+    .env
+    .env.example
+    esa.json
+    credentials.json
 
 
-# dependencies
-node_modules/
+    # dependencies
+    node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+    # Expo
+    .expo/
+    dist/
+    web-build/
+    expo-env.d.ts
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+    # Native
+    .kotlin/
+    *.orig.*
+    *.jks
+    *.p8
+    *.p12
+    *.key
+    *.mobileprovision
 
-# Metro
-.metro-health-check*
+    # Metro
+    .metro-health-check*
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+    # debug
+    npm-debug.*
+    yarn-debug.*
+    yarn-error.*
 
-# macOS
-.DS_Store
-*.pem
+    # macOS
+    .DS_Store
+    *.pem
 
-# local env files
-.env*.local
-.env
+    # local env files
+    .env*.local
+    .env
 
-# typescript
-*.tsbuildinfo
+    # typescript
+    *.tsbuildinfo
 
-app-example
+    app-example
 
-# generated native folders
-/ios
-/android
-android/google-services.json
-android/
-eas.json
+    # generated native folders
+    /ios
+    /android
+    android/google-services.json
+    android/
+    eas.json

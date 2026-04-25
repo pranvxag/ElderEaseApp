@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "994743956796",
+    "project_id": "elderease-pranvxag",
+    "storage_bucket": "elderease-pranvxag.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:994743956796:android:ec172ded949ba438a71a39",
+        "android_client_info": {
+          "package_name": "com.pranavgale.elderease"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "994743956796-c8sh5a3olmrlcfkfl1etk8ckkqcn5gqd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pranavgale.elderease",
+            "certificate_hash": "5a5bc0e72207ed4e67214ee44a8072bd213e91a8"
+          }
+        },
+        {
+          "client_id": "994743956796-a59k1gor9ce8qcu0o8blcktp8uf30hj5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuB5wNZ3Lb8ahpWcb-t-wijxG7CF_grQQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "994743956796-a59k1gor9ce8qcu0o8blcktp8uf30hj5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

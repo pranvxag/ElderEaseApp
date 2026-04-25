@@ -26,7 +26,8 @@ import {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+// const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 const SPEECH_API_KEY  = process.env.EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY;
 const FIREBASE_PROJECT = 'elderease-pranvxag';
 
