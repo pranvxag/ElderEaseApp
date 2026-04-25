@@ -8,7 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyD7mSuVP0nQ3WeH0ySDz544DCxo1dHSVGc",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "elderease-pranvxag.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "elderease-pranvxag",
         "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "elderease-pranvxag.firebasestorage.app",
