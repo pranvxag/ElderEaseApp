@@ -44,7 +44,7 @@ export default function ScanPickerScreen() {
           base64: false,
         });
 
-        if (!res || (res as any).cancelled) return;
+        if (!res || (res as any).canceled) return;
         const uri = (res as any).uri ?? (res as any).assets?.[0]?.uri ?? null;
         if (!uri) return;
 

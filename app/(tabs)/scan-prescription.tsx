@@ -3,7 +3,7 @@ import { Medication } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useMedications } from '@/hooks/useMedications';
 import { ParsedMed, parsePrescription } from '@/lib/ai/parsePrescription';
-import { useSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     Alert,
@@ -22,7 +22,7 @@ export default function ScanPrescriptionScreen() {
   const [parsed, setParsed] = useState<ParsedMed[]>([]);
   const { addMedication } = useMedications();
 
-  const params: any = useSearchParams();
+  const params: any = useLocalSearchParams();
 
   useEffect(() => {
     if (!params?.image) return;
@@ -72,7 +72,7 @@ export default function ScanPrescriptionScreen() {
         base64: false,
       });
 
-      if (!res.cancelled) {
+      if (!res.canceled) {
         // support different SDK shapes
         // @ts-ignore
         setImageUri((res as any).uri ?? (res as any).assets?.[0]?.uri ?? null);

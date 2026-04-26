@@ -1,6 +1,6 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
-import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, type Firestore } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
 
@@ -68,7 +68,7 @@ if (Platform.OS === 'web') {
 // export const db = initializeFirestore(app, {
 //   localCache: persistentLocalCache(),
 // });
-let db;
+let db: Firestore;
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache(),

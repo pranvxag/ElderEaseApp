@@ -26,9 +26,8 @@ import {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-const SPEECH_API_KEY  = process.env.EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY;
+// Use a server-side proxy to avoid embedding API keys in the client build.
+const PROXY_BASE = process.env.EXPO_PUBLIC_API_PROXY_URL ?? 'http://localhost:3000';
 const FIREBASE_PROJECT = 'elderease-pranvxag';
 
 // ─── Design palette ───────────────────────────────────────────────────────────
@@ -94,13 +93,15 @@ Rules:
 }
 
 // ─── Gemini API (Firebase AI Logic) ──────────────────────────────────────────
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function callGeminiAgent(
   systemPrompt: string,
   history: { role: 'user' | 'model'; parts: { text: string }[] }[]
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `${PROXY_BASE}/api/gemini`;
 
-  const response = await fetch(url, {
+  const requestOptions = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -111,21 +112,42 @@ async function callGeminiAgent(
         temperature: 0.7,
       },
     }),
-  });
+  };
+  // Exponential backoff with a reasonable initial delay for free-tier quotas.
+  let backoff = 2000;
+  const maxAttempts = 3;
 
-  if (!response.ok) {
-    const e = await response.text();
-    throw new Error(`Gemini ${response.status}: ${e}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(url, requestOptions);
+
+    if (response.status === 429) {
+      if (attempt === maxAttempts) {
+        const e = await response.text();
+        throw new Error(`Gemini 429: ${e}`);
+      }
+
+      console.warn(`Gemini rate limited (attempt ${attempt}). Retrying in ${backoff}ms...`);
+      await sleep(backoff);
+      backoff *= 2;
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(async () => ({ error: { message: await response.text() } }));
+      throw new Error(`Gemini ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
   }
 
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+  throw new Error('Gemini request failed after retries.');
 }
 
 // ─── Google Cloud TTS ─────────────────────────────────────────────────────────
 async function synthesizeSpeech(text: string, langCode: string): Promise<string | null> {
   try {
-    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${SPEECH_API_KEY}`;
+    const url = `${PROXY_BASE}/api/tts`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -162,7 +184,7 @@ async function synthesizeSpeech(text: string, langCode: string): Promise<string 
 
 // ─── Google Cloud STT ─────────────────────────────────────────────────────────
 async function transcribeSpeech(audioBase64: string, langCode: string): Promise<string> {
-  const url = `https://speech.googleapis.com/v1/speech:recognize?key=${SPEECH_API_KEY}`;
+  const url = `${PROXY_BASE}/api/stt`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -868,7 +890,7 @@ export default function AICallScreen() {
           {/* Voice confirm banner */}
           {pendingVoice && !isRecording && !isTranscribing && (
             <View style={s.voiceBanner}>
-              <Text style={s.voiceBannerText} numberOfLines={2}>🎤 "{pendingVoice}"</Text>
+              <Text style={s.voiceBannerText} numberOfLines={2}>🎤 {"\""}{pendingVoice}{"\""}</Text>
               <View style={s.voiceBannerActions}>
                 <TouchableOpacity style={s.voiceConfirmBtn} onPress={() => sendMessage()}>
                   <Text style={s.voiceConfirmText}>Send ✓</Text>

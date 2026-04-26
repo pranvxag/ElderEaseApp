@@ -13,6 +13,7 @@ function makeDefaultProfile(uid: string, email = '', displayName = '', photoURL?
     age: '',
     bloodGroup: '',
     allergies: '',
+    preferredLanguage: 'en',
     emergencyContacts: [],
     medicines: [],
     createdAt: now,
@@ -47,6 +48,7 @@ export function useUserProfile() {
         photoURL: data.photoURL ?? base.photoURL ?? user.photoURL ?? undefined,
         createdAt: base.createdAt || now,
         updatedAt: now,
+        preferredLanguage: (data.preferredLanguage as any) ?? (base.preferredLanguage as any) ?? 'en',
         emergencyContacts: data.emergencyContacts ?? base.emergencyContacts ?? [],
         medicines: data.medicines ?? base.medicines ?? [],
       };

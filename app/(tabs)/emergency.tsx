@@ -59,6 +59,7 @@ export default function EmergencyScreen() {
   const [contacts, , contactsLoading] = useEmergencyContacts();
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosCountdown, setSosCountdown] = useState(5);
+  const [sosCancelled, setSosCancelled] = useState(false);
 
   const { latest } = useHealthData();
 

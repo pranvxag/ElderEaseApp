@@ -1,4 +1,11 @@
 # Sensitive files - never commit
+# Credentials
+credentials/
+credentials/android/keystore.jks
+
+# iOS
+ios/.xcode.env
+ios/.xcode.env.local
 .env
 .env.local
 .env.example

@@ -2,7 +2,7 @@ import UploadReportLogo from '@/components/icons/UploadReportLogo';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useHealthData } from '@/hooks/useHealthData';
 import { parseLabReport } from '@/lib/ai/parseReport';
-import { useSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     Alert,
@@ -20,7 +20,7 @@ export default function UploadReportScreen() {
   const [ocrText, setOcrText] = useState('');
   const { addEntry } = useHealthData();
 
-  const params: any = useSearchParams();
+  const params: any = useLocalSearchParams();
 
   useEffect(() => {
     if (!params?.image) return;
@@ -66,7 +66,7 @@ export default function UploadReportScreen() {
         base64: false,
       });
 
-      if (!res.cancelled) {
+      if (!res.canceled) {
         // @ts-ignore
         setImageUri((res as any).uri ?? (res as any).assets?.[0]?.uri ?? null);
       }
