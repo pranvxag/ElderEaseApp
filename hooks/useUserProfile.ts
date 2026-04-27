@@ -30,12 +30,26 @@ function toTrackerFrequency(value?: string): TrackerMedication['frequency'] {
   return 'daily';
 }
 
+const TIME_LABEL_TO_REMINDER: Record<string, string> = {
+  'Morning (6–9 AM)': '8:00 AM',
+  'Mid-morning (9–12 PM)': '10:00 AM',
+  'Afternoon (12–3 PM)': '1:00 PM',
+  'Evening (3–6 PM)': '5:00 PM',
+  'Night (6–9 PM)': '8:00 PM',
+  'Bedtime (9 PM+)': '9:00 PM',
+};
+
+function toReminderTime(value?: string): string {
+  if (!value) return '9:00 AM';
+  return TIME_LABEL_TO_REMINDER[value] ?? value;
+}
+
 function toTrackerMeds(medicines: Medicine[]): TrackerMedication[] {
   return medicines.map((med) => ({
     id: med.id,
     name: med.name,
     dosage: med.dosage,
-    time: med.time || '9:00 AM',
+    time: toReminderTime(med.time),
     frequency: toTrackerFrequency(med.frequency),
     color: '#4ECDC4',
     status: 'upcoming',

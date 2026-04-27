@@ -5,12 +5,12 @@ import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useState } from 'react';
 import {
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 
 const BADGES = [
@@ -100,10 +100,12 @@ function RoutineCard({
 }
 
 export default function RoutineScreen() {
-  const [items, setItems] = useState<RoutineItem[]>(MOCK_ROUTINE);
+  const [items, setItems, loading] = useStoredState<RoutineItem[]>(STORAGE_KEYS.ROUTINE, MOCK_ROUTINE);
   const [activeTab, setActiveTab] = useState<'today' | 'week' | 'badges'>('today');
   const [profile] = useProfile();
   const [lastReportSent, setLastReportSent] = useStoredState<string | null>(STORAGE_KEYS.LAST_REPORT_SENT, null);
+
+  if (loading) return null;
 
   const doneCount = items.filter((i) => i.done).length;
   const totalCount = items.length;

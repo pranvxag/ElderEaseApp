@@ -2,6 +2,7 @@
 import { useHealthData } from '@/hooks/useHealthData';
 import { useMedications } from '@/hooks/useMedications';
 import { useProfile } from '@/hooks/useProfile';
+import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import { HEALTH_TIPS, MOCK_ROUTINE } from '../../constants/data';
 // import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import AICallLogo from '@/components/icons/AICallLogo';
@@ -10,12 +11,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
 
@@ -39,13 +40,14 @@ export default function HomeScreen() {
   const [profile, , profileLoading] = useProfile();
   const { latest } = useHealthData();
   const { takenCount, totalMeds, upcomingMeds, loading } = useMedications();
+  const [routineItems, , routineLoading] = useStoredState(STORAGE_KEYS.ROUTINE, MOCK_ROUTINE);
 
-  if (loading || profileLoading) return null; // or a spinner
+  if (loading || profileLoading || routineLoading) return null; // or a spinner
   const greeting = getGreeting();
   const todayStr = getTodayString();
 
-  const routinePercent = MOCK_ROUTINE.length > 0
-    ? Math.round((MOCK_ROUTINE.filter((item) => item.done).length / MOCK_ROUTINE.length) * 100)
+  const routinePercent = routineItems.length > 0
+    ? Math.round((routineItems.filter((item) => item.done).length / routineItems.length) * 100)
     : 0;
 
   const tip = Array.isArray(HEALTH_TIPS) && HEALTH_TIPS.length > 0
@@ -175,7 +177,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.routineSnap}>
-          {MOCK_ROUTINE.slice(0, 4).map((item) => (
+          {routineItems.slice(0, 4).map((item) => (
             <View key={item.id} style={styles.routineSnapItem}>
               <View
                 style={[

@@ -3,6 +3,15 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Medication } from '../constants/data';
 
+const TIME_LABEL_TO_REMINDER: Record<string, string> = {
+  'Morning (6–9 AM)': '8:00 AM',
+  'Mid-morning (9–12 PM)': '10:00 AM',
+  'Afternoon (12–3 PM)': '1:00 PM',
+  'Evening (3–6 PM)': '5:00 PM',
+  'Night (6–9 PM)': '8:00 PM',
+  'Bedtime (9 PM+)': '9:00 PM',
+};
+
 // ── How notifications appear when app is in foreground ──────────────────────
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -55,7 +64,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 // ── Parse "9:00 AM" → { hour: 9, minute: 0 } ────────────────────────────────
 function parseTime(timeStr: string): { hour: number; minute: number } | null {
-  const match = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const normalizedTime = TIME_LABEL_TO_REMINDER[timeStr] ?? timeStr;
+  const match = normalizedTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!match) return null;
 
   let hour = parseInt(match[1], 10);
