@@ -3,8 +3,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useMedications } from '@/hooks/useMedications';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { getApiProxyBaseUrl } from '@/lib/apiProxy';
 import { LANGUAGE_CODES, PreferredLanguage } from '@/types/user';
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioRecorder,
+} from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -27,7 +34,7 @@ import {
 const { width: SCREEN_W } = Dimensions.get('window');
 
 // Use a server-side proxy to avoid embedding API keys in the client build.
-const PROXY_BASE = process.env.EXPO_PUBLIC_API_PROXY_URL ?? 'http://localhost:3000';
+const PROXY_BASE = getApiProxyBaseUrl();
 const FIREBASE_PROJECT = 'elderease-pranvxag';
 
 // ─── Design palette ───────────────────────────────────────────────────────────
@@ -92,25 +99,23 @@ Rules:
 - Keep each response to 2-3 short sentences maximum.`;
 }
 
-// ─── Gemini API (Firebase AI Logic) ──────────────────────────────────────────
+// ─── Groq API ───────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callGeminiAgent(
+async function callGroqAgent(
   systemPrompt: string,
-  history: { role: 'user' | 'model'; parts: { text: string }[] }[]
+  history: { role: 'system' | 'user' | 'assistant'; content: string }[]
 ): Promise<string> {
-  const url = `${PROXY_BASE}/api/gemini`;
+  const url = `${PROXY_BASE}/api/groq`;
 
   const requestOptions = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: history,
-      generationConfig: {
-        maxOutputTokens: 300,
-        temperature: 0.7,
-      },
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'system', content: systemPrompt }, ...history],
+      temperature: 0.7,
+      max_tokens: 300,
     }),
   };
   // Exponential backoff with a reasonable initial delay for free-tier quotas.
@@ -118,15 +123,29 @@ async function callGeminiAgent(
   const maxAttempts = 3;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const response = await fetch(url, requestOptions);
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetch(url, requestOptions);
+    } catch (networkError) {
+      if (attempt === maxAttempts) {
+        throw new Error(
+          `Could not reach API proxy at ${PROXY_BASE}. Start the server and set EXPO_PUBLIC_API_PROXY_URL for emulator/device usage. Original error: ${String(networkError)}`
+        );
+      }
+
+      console.warn(`Groq network error (attempt ${attempt}). Retrying in ${backoff}ms...`, networkError);
+      await sleep(backoff);
+      backoff *= 2;
+      continue;
+    }
 
     if (response.status === 429) {
       if (attempt === maxAttempts) {
         const e = await response.text();
-        throw new Error(`Gemini 429: ${e}`);
+        throw new Error(`Groq 429: ${e}`);
       }
 
-      console.warn(`Gemini rate limited (attempt ${attempt}). Retrying in ${backoff}ms...`);
+      console.warn(`Groq rate limited (attempt ${attempt}). Retrying in ${backoff}ms...`);
       await sleep(backoff);
       backoff *= 2;
       continue;
@@ -134,14 +153,14 @@ async function callGeminiAgent(
 
     if (!response.ok) {
       const errorData = await response.json().catch(async () => ({ error: { message: await response.text() } }));
-      throw new Error(`Gemini ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+      throw new Error(`Groq ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
     }
 
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+    return data.choices?.[0]?.message?.content?.trim() ?? '';
   }
 
-  throw new Error('Gemini request failed after retries.');
+  throw new Error('Groq request failed after retries.');
 }
 
 // ─── Google Cloud TTS ─────────────────────────────────────────────────────────
@@ -185,29 +204,34 @@ async function synthesizeSpeech(text: string, langCode: string): Promise<string 
 // ─── Google Cloud STT ─────────────────────────────────────────────────────────
 async function transcribeSpeech(audioBase64: string, langCode: string): Promise<string> {
   const url = `${PROXY_BASE}/api/stt`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      config: {
-        encoding: 'AMR_WB',
-        sampleRateHertz: 16000,
-        languageCode: langCode,
-        alternativeLanguageCodes: ['en-IN', 'hi-IN', 'mr-IN'],
-        model: 'default',
-        enableAutomaticPunctuation: true,
-      },
-      audio: { content: audioBase64 },
-    }),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          encoding: 'AMR_WB',
+          sampleRateHertz: 16000,
+          languageCode: langCode,
+          alternativeLanguageCodes: ['en-IN', 'hi-IN', 'mr-IN'],
+          model: 'default',
+          enableAutomaticPunctuation: true,
+        },
+        audio: { content: audioBase64 },
+      }),
+    });
 
-  if (!response.ok) {
-    console.warn('STT error:', await response.text());
+    if (!response.ok) {
+      console.warn('STT error:', await response.text());
+      return '';
+    }
+
+    const data = await response.json();
+    return data.results?.[0]?.alternatives?.[0]?.transcript ?? '';
+  } catch (error) {
+    console.warn('STT network error:', error);
     return '';
   }
-
-  const data = await response.json();
-  return data.results?.[0]?.alternatives?.[0]?.transcript ?? '';
 }
 
 // ─── Sugar helpers ────────────────────────────────────────────────────────────
@@ -315,13 +339,14 @@ export default function AICallScreen() {
   const [isRecording,   setIsRecording]   = useState(false);
   const [isTranscribing,setIsTranscribing]= useState(false);
   const [pendingVoice,  setPendingVoice]  = useState('');
+  const [audioToPlay,   setAudioToPlay]    = useState<string | null>(null);
 
-  const recordingRef  = useRef<Audio.Recording | null>(null);
-  const soundRef      = useRef<Audio.Sound | null>(null);
   const secondsRef    = useRef(0);
   const timerRef      = useRef<any>(null);
   const scrollRef     = useRef<ScrollView>(null);
-  const geminiHistory = useRef<{ role: 'user' | 'model'; parts: { text: string }[] }[]>([]);
+  const chatHistory   = useRef<{ role: 'system' | 'user' | 'assistant'; content: string }[]>([]);
+  const recorder      = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const player         = useAudioPlayer(audioToPlay);
 
   // Animations
   const ring1      = useRef(new Animated.Value(0)).current;
@@ -333,13 +358,18 @@ export default function AICallScreen() {
 
   // Request audio permissions on mount
   useEffect(() => {
-    Audio.requestPermissionsAsync().catch(() => {});
-    Audio.setAudioModeAsync({
+    requestRecordingPermissionsAsync().catch(() => {});
+    setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
     }).catch(() => {});
-    return () => { stopRing(); stopTimer(); cleanupAudio(); };
+    return () => { stopRing(); stopTimer(); };
   }, []);
+
+  useEffect(() => {
+    if (!audioToPlay) return;
+    player.play();
+  }, [audioToPlay, player]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -366,23 +396,10 @@ export default function AICallScreen() {
   }, [isRecording]);
 
   // ─── Audio helpers ──────────────────────────────────────────────────────
-  async function cleanupAudio() {
-    try {
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-    } catch (_) {}
-  }
-
   async function playAudio(path: string) {
     if (muted) return;
     try {
-      await cleanupAudio();
-      const { sound } = await Audio.Sound.createAsync({ uri: path });
-      soundRef.current = sound;
-      await sound.playAsync();
+      setAudioToPlay(path);
     } catch (e) {
       console.warn('Audio play error:', e);
     }
@@ -398,11 +415,9 @@ export default function AICallScreen() {
   // ─── Recording ──────────────────────────────────────────────────────────
   async function startRecording() {
     try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      recordingRef.current = recording;
+      await setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
       setPendingVoice('');
     } catch (e) {
@@ -411,13 +426,12 @@ export default function AICallScreen() {
   }
 
   async function stopRecording() {
-    if (!recordingRef.current) return;
+    if (!recorder.isRecording) return;
     setIsRecording(false);
     setIsTranscribing(true);
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await recorder.stop();
+      const uri = recorder.uri;
 
       if (!uri) { setIsTranscribing(false); return; }
 
@@ -470,7 +484,7 @@ export default function AICallScreen() {
   function startCallWithMode(mode: CallMode) {
     setCallMode(mode); setInCall(true); setIncoming(true);
     setMessages([]); setDetectedSugar(null); setCallEnded(false);
-    geminiHistory.current = [];
+    chatHistory.current = [];
     startRing();
   }
 
@@ -484,10 +498,10 @@ export default function AICallScreen() {
 
     setAgentTyping(true);
     try {
-      const openingMsg = { role: 'user' as const, parts: [{ text: '[Call connected. Please greet the patient warmly and start the conversation.]' }] };
-      geminiHistory.current = [openingMsg];
-      const agentReply = await callGeminiAgent(system, geminiHistory.current);
-      geminiHistory.current.push({ role: 'model', parts: [{ text: agentReply }] });
+      const openingMsg = { role: 'user' as const, content: '[Call connected. Please greet the patient warmly and start the conversation.]' };
+      chatHistory.current = [openingMsg];
+      const agentReply = await callGroqAgent(system, chatHistory.current);
+      chatHistory.current.push({ role: 'assistant', content: agentReply });
       const cleanReply = cleanAgentText(agentReply);
       setMessages([{ role: 'agent', text: cleanReply }]);
       await speak(agentReply);
@@ -508,14 +522,13 @@ export default function AICallScreen() {
 
   function endCall() {
     stopTimer();
-    cleanupAudio();
     if (isRecording) stopRecording();
     setConnected(false); setCallEnded(true);
   }
 
   function dismissCall() {
     setInCall(false); setCallMode(null); setCallEnded(false);
-    setMessages([]); geminiHistory.current = [];
+    setMessages([]); chatHistory.current = [];
     setPendingVoice(''); setUserInput('');
   }
 
@@ -526,18 +539,18 @@ export default function AICallScreen() {
     setUserInput(''); setPendingVoice('');
 
     setMessages(prev => [...prev, { role: 'user', text }]);
-    geminiHistory.current.push({ role: 'user', parts: [{ text }] });
+    chatHistory.current.push({ role: 'user', content: text });
 
     const medList = upcomingMeds?.map(m => `${m.name} at ${m.time}`).join(', ') || '';
     const system  = buildSystemPrompt(callMode, medList, preferredLang);
 
     setAgentTyping(true);
     try {
-      const agentReply = await callGeminiAgent(system, geminiHistory.current);
+      const agentReply = await callGroqAgent(system, chatHistory.current);
       const sugar      = extractSugarTag(agentReply);
       if (sugar) setDetectedSugar(sugar);
       const cleanReply = cleanAgentText(agentReply);
-      geminiHistory.current.push({ role: 'model', parts: [{ text: agentReply }] });
+      chatHistory.current.push({ role: 'assistant', content: agentReply });
       setMessages(prev => [...prev, { role: 'agent', text: cleanReply }]);
       await speak(agentReply);
       if (/bye|goodbye|take care|धन्यवाद|ठीक है|नमस्ते|धन्यवाद|निरोगी राहा/i.test(cleanReply)) {
@@ -596,7 +609,7 @@ export default function AICallScreen() {
           <View style={s.idleHeader}>
             <View style={s.aiBadge}>
               <View style={s.aiBadgeDot} />
-              <Text style={s.aiBadgeText}>AI POWERED · GEMINI</Text>
+              <Text style={s.aiBadgeText}>AI POWERED · GROQ</Text>
             </View>
             <Text style={s.heroTitle}>Health{'\n'}Calls</Text>
             <Text style={s.heroSub}>
@@ -691,7 +704,7 @@ export default function AICallScreen() {
 
         <Text style={s.incomingName}>{callMode === 'meds' ? 'ElderEase' : 'AI Health Check'}</Text>
         <Text style={s.incomingSubtitle}>{callMode === 'meds' ? '💊  Medication Reminder' : '🩸  Blood Sugar Check'}</Text>
-        <Text style={s.incomingPowered}>Gemini 1.5 Flash · Google AI</Text>
+        <Text style={s.incomingPowered}>Groq Llama · Fast AI responses</Text>
 
         <View style={s.incomingActions}>
           <View style={s.incomingBtnGroup}>

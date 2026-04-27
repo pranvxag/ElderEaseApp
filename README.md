@@ -2,12 +2,12 @@
 
 Lightweight mobile app for elder care: medication reminders, scan & parse prescriptions, upload lab reports, and an AI-assisted voice call flow for capturing blood sugar readings.
 
-Release note: updates applied Apr 26, 2026 — added a small server proxy to avoid embedding Google API keys in client builds, updated the AI call flow to use that proxy, and improved retry/backoff behavior.
+Release note: updates applied Apr 27, 2026 — switched the AI call flow to Groq through the local server proxy, kept Google Speech APIs for STT/TTS, and improved retry/backoff behavior.
 
 ---
 
-**Quick summary of changes (Apr 26, 2026)**
-- **Server proxy**: Added a local Express proxy at `/server` which forward calls to Google Gemini (Generative Language), Text-to-Speech and Speech-to-Text APIs. See [server/index.js](server/index.js).
+**Quick summary of changes (Apr 27, 2026)**
+- **Server proxy**: Added a local Express proxy at `/server` which forwards AI calls to Groq and speech calls to Google Text-to-Speech and Speech-to-Text APIs. See [server/index.js](server/index.js).
 - **Client updates**: `app/(tabs)/ai-call.tsx` now calls the proxy (`EXPO_PUBLIC_API_PROXY_URL`) instead of embedding API keys. See [app/(tabs)/ai-call.tsx](app/(tabs)/ai-call.tsx).
 - **Retry/backoff**: Increased initial backoff and added server-side retries for 429 responses.
 - **Security**: Removed client-side usage of public API keys (store real keys on server only). Rotate any keys exposed in `android/google-services.json` (see [android/google-services.json](android/google-services.json)).
@@ -46,19 +46,20 @@ Refer to the app folder for the full file-based routing layout.
 
 Add the following API credentials to your *server-side* environment (never in client/public env):
 
-- **Google Generative Language (Gemini)**
+- **Groq**
   - Purpose: AI agent generation (used by AI call flow)
-  - Server env var: `GEMINI_API_KEY`
-  - Proxy endpoint: `POST /api/gemini` (implemented in [server/index.js](server/index.js))
+  - Server env var: `EXPO_PUBLIC_GROQ_API_KEY`
+  - Optional server env var: `GROQ_MODEL` (defaults to `llama-3.1-8b-instant`)
+  - Proxy endpoint: `POST /api/groq` (implemented in [server/index.js](server/index.js))
 
 - **Google Text-to-Speech (Cloud TTS)**
   - Purpose: Generate MP3 audio for voice calls
-  - Server env var: `SPEECH_API_KEY`
+  - Server env var: `EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY`
   - Proxy endpoint: `POST /api/tts` (implemented in [server/index.js](server/index.js))
 
 - **Google Speech-to-Text (Cloud STT)**
   - Purpose: Transcribe user audio during calls
-  - Server env var: `SPEECH_API_KEY` (same key as TTS can be used if enabled)
+  - Server env var: `EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY` (same key as TTS can be used if enabled)
   - Proxy endpoint: `POST /api/stt` (implemented in [server/index.js](server/index.js))
 
 - **Firebase / Google Services (optional)**
@@ -71,7 +72,7 @@ Client-side configuration:
 - `EXPO_PUBLIC_API_PROXY_URL` — URL the client will use to reach the server proxy (e.g. `http://localhost:3000`). Set this in your Expo environment or CI config. The client now uses this value from `process.env.EXPO_PUBLIC_API_PROXY_URL`.
 
 Notes:
-- Do NOT put `GEMINI_API_KEY` or `SPEECH_API_KEY` into `EXPO_PUBLIC_...` variables or commit them to source. The proxy is deliberately used so client bundles never contain secrets.
+- Do NOT put these keys into `EXPO_PUBLIC_...` variables unless you intentionally want them exposed to the Expo client bundle. The proxy is still used so the app can run consistently across devices.
 
 ---
 
@@ -83,8 +84,8 @@ PowerShell
 ```powershell
 cd server
 npm install
-$env:GEMINI_API_KEY="your_server_gemini_key"
-$env:SPEECH_API_KEY="your_server_speech_key"
+$env:EXPO_PUBLIC_GROQ_API_KEY="your_server_groq_key"
+$env:EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY="your_server_speech_key"
 npm start
 ```
 
@@ -92,20 +93,20 @@ bash
 ```bash
 cd server
 npm install
-GEMINI_API_KEY=your_server_gemini_key SPEECH_API_KEY=your_server_speech_key npm start
+EXPO_PUBLIC_GROQ_API_KEY=your_server_groq_key EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY=your_server_speech_key npm start
 ```
 
 Health check: `GET http://localhost:3000/health` should return `{ "status": "ok" }`.
 
-Quick proxy test (no real keys required for the health check; real keys needed for `/api/gemini`):
+Quick proxy test (no real keys required for the health check; real keys needed for `/api/groq`):
 
 ```bash
 curl -i http://localhost:3000/health
 
-# example Gemini forward test (you'll get a 4xx/403 if key is invalid)
-curl -i -X POST http://localhost:3000/api/gemini \
+# example Groq forward test (you'll get a 4xx/401 if key is invalid)
+curl -i -X POST http://localhost:3000/api/groq \
   -H "Content-Type: application/json" \
-  -d '{"system_instruction":{"parts":[{"text":"hello"}]},"contents":[],"generationConfig":{"maxOutputTokens":10}}'
+  -d '{"messages":[{"role":"user","content":"hello"}],"max_tokens":10}'
 ```
 
 ---
@@ -122,10 +123,19 @@ npx expo start
 
 ---
 
+**Firestore cloud sync check (if local data works but cloud does not)**
+
+1. In Firebase Console, verify project `elderease-pranvxag` exists and Firestore Database is created.
+2. Ensure Firestore API is enabled for the Google Cloud project.
+3. Confirm app env vars are from the same Firebase project (`EXPO_PUBLIC_FIREBASE_PROJECT_ID`, `EXPO_PUBLIC_FIREBASE_API_KEY`, etc.).
+4. If Firestore is unavailable, ElderEase will continue using local AsyncStorage and disable cloud sync for the current run.
+
+---
+
 **Files changed in this update**
 
 - [app/(tabs)/ai-call.tsx](app/(tabs)/ai-call.tsx) — switched client to use proxy and improved backoff logic.
-- [server/index.js](server/index.js) — new Express proxy implementing `/api/gemini`, `/api/tts`, `/api/stt`, plus `/health`.
+- [server/index.js](server/index.js) — Express proxy implementing `/api/groq`, `/api/tts`, `/api/stt`, plus `/health`.
 - [server/package.json](server/package.json) — server dependencies and `npm start` script.
 - [android/google-services.json](android/google-services.json) — contains `current_key` entry (rotate if exposed).
 
@@ -133,7 +143,7 @@ npx expo start
 
 **Security & best practices**
 
-- Keep `GEMINI_API_KEY` and `SPEECH_API_KEY` only on the server or in a cloud secret manager.
+- Keep `EXPO_PUBLIC_GROQ_API_KEY` and `EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY` in the environment used by the proxy and Expo app.
 - Do not commit `android/google-services.json` with real keys to public repos; use CI secrets / env vars for builds.
 - Use a rate-limiter / quota aware logic on the server if you expect many concurrent requests.
 

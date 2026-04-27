@@ -2,6 +2,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, storageSet, useStoredState } from '@/hooks/useStorage';
 import { EmergencyContact, Medicine, UserProfile } from '@/types/user';
 import { useCallback } from 'react';
+import { Medication as TrackerMedication } from '../constants/data';
 
 function makeDefaultProfile(uid: string, email = '', displayName = '', photoURL?: string | null): UserProfile {
   const now = new Date().toISOString();
@@ -19,6 +20,29 @@ function makeDefaultProfile(uid: string, email = '', displayName = '', photoURL?
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function toTrackerFrequency(value?: string): TrackerMedication['frequency'] {
+  const source = value?.toLowerCase() ?? '';
+  if (source.includes('twice') || source.includes('12')) return 'twice-daily';
+  if (source.includes('week')) return 'weekly';
+  if (source.includes('needed') || source.includes('prn')) return 'as-needed';
+  return 'daily';
+}
+
+function toTrackerMeds(medicines: Medicine[]): TrackerMedication[] {
+  return medicines.map((med) => ({
+    id: med.id,
+    name: med.name,
+    dosage: med.dosage,
+    time: med.time || '9:00 AM',
+    frequency: toTrackerFrequency(med.frequency),
+    color: '#4ECDC4',
+    status: 'upcoming',
+    purpose: med.notes || 'As prescribed',
+    streak: 0,
+    instructions: med.notes,
+  }));
 }
 
 export function useUserProfile() {
@@ -62,19 +86,35 @@ export function useUserProfile() {
   const updateMedicines = useCallback(
     async (medicines: Medicine[]) => {
       if (!user) return;
-      await saveProfile({ medicines });
-      await storageSet(STORAGE_KEYS.MEDICINES(user.uid), medicines);
+      const now = new Date().toISOString();
+      setProfile((prev) => {
+        const base = prev ?? makeDefaultProfile(user.uid, user.email ?? '', user.displayName ?? '', user.photoURL);
+        return {
+          ...base,
+          medicines,
+          updatedAt: now,
+        };
+      });
+      await storageSet(STORAGE_KEYS.MEDICINES(user.uid), toTrackerMeds(medicines));
     },
-    [saveProfile, user]
+    [setProfile, user]
   );
 
   const updateEmergencyContacts = useCallback(
     async (contacts: EmergencyContact[]) => {
       if (!user) return;
-      await saveProfile({ emergencyContacts: contacts });
+      const now = new Date().toISOString();
+      setProfile((prev) => {
+        const base = prev ?? makeDefaultProfile(user.uid, user.email ?? '', user.displayName ?? '', user.photoURL);
+        return {
+          ...base,
+          emergencyContacts: contacts,
+          updatedAt: now,
+        };
+      });
       await storageSet(STORAGE_KEYS.EMERGENCY_CONTACTS(user.uid), contacts);
     },
-    [saveProfile, user]
+    [setProfile, user]
   );
 
   return {

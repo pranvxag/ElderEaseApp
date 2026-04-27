@@ -1,5 +1,6 @@
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+import { FirestoreMedicine, useMedicines } from '@/hooks/useMedicines';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { EmergencyContact, LANGUAGE_OPTIONS, Medicine, PreferredLanguage } from '@/types/user';
 import { useRouter } from 'expo-router';
@@ -37,6 +38,31 @@ const TIME_OPTIONS = [
 ];
 
 const createId = () => Date.now().toString() + Math.random().toString(36).slice(2);
+
+function toProfileMedicine(med: FirestoreMedicine): Medicine {
+  return {
+    id: med.id,
+    name: med.name,
+    dosage: med.dosage,
+    frequency: med.frequency || 'Once a day',
+    time: med.time || med.times?.[0] || undefined,
+    notes: med.notes,
+  };
+}
+
+function toCloudMedicine(med: Medicine): FirestoreMedicine {
+  const trimmedTime = med.time?.trim();
+  return {
+    id: med.id,
+    name: med.name,
+    dosage: med.dosage,
+    times: trimmedTime ? [trimmedTime] : [],
+    enabled: true,
+    frequency: med.frequency,
+    time: trimmedTime,
+    notes: med.notes,
+  };
+}
 
 // ─── Reusable Dropdown ────────────────────────────────────────────────────────
 function Dropdown({
@@ -119,6 +145,14 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { profile, loading, saveProfile, updateEmergencyContacts, updateMedicines } = useUserProfile();
+  const {
+    medicines: cloudMedicines,
+    addMedicine: addCloudMedicine,
+    removeMedicine: removeCloudMedicine,
+    updateMedicine: updateCloudMedicine,
+    loading: cloudMedicinesLoading,
+  } = useMedicines();
+  const [formInitialized, setFormInitialized] = useState(false);
 
   const [displayName, setDisplayName]             = useState('');
   const [age, setAge]                             = useState('');
@@ -134,33 +168,58 @@ export default function EditProfileScreen() {
   const [addingContact, setAddingContact]   = useState(false);
 
   useEffect(() => {
-    if (loading || !user) return;
+    if (loading || !user || formInitialized || cloudMedicinesLoading) return;
     setDisplayName(profile?.displayName || user.displayName || '');
     setAge(profile?.age || '');
     setBloodGroup(profile?.bloodGroup || '');
     setAllergies(profile?.allergies || '');
     setPreferredLanguage(profile?.preferredLanguage || 'en');
-    setMedicines(profile?.medicines || []);
+    const initialMedicines = cloudMedicines.length > 0
+      ? cloudMedicines.map(toProfileMedicine)
+      : (profile?.medicines || []);
+    setMedicines(initialMedicines);
     setContacts(profile?.emergencyContacts || []);
-  }, [loading, profile, user]);
+    setFormInitialized(true);
+  }, [cloudMedicines, cloudMedicinesLoading, formInitialized, loading, profile, user]);
+
+  useEffect(() => {
+    setFormInitialized(false);
+  }, [user?.uid]);
 
   if (loading || !user) return null;
 
-  const addMedicine = () => {
+  const addMedicine = async () => {
     if (!newMedicine.name.trim() || !newMedicine.dosage.trim() || !newMedicine.frequency.trim()) {
       Alert.alert('Missing medicine info', 'Please fill medicine name, dosage, and frequency.');
       return;
     }
-    setMedicines(prev => [...prev, {
-      id: createId(),
-      name: newMedicine.name.trim(),
-      dosage: newMedicine.dosage.trim(),
-      frequency: newMedicine.frequency.trim(),
-      time: newMedicine.time?.trim() || undefined,
-      notes: newMedicine.notes?.trim() || undefined,
-    }]);
-    setNewMedicine({ id: '', name: '', dosage: '', frequency: '', time: '', notes: '' });
-    setAddingMedicine(false);
+    try {
+      const generatedId = createId();
+      const cloudMedicine = await addCloudMedicine({
+        id: generatedId,
+        name: newMedicine.name.trim(),
+        dosage: newMedicine.dosage.trim(),
+        times: newMedicine.time?.trim() ? [newMedicine.time.trim()] : [],
+        enabled: true,
+        frequency: newMedicine.frequency.trim(),
+        time: newMedicine.time?.trim() || undefined,
+        notes: newMedicine.notes?.trim() || undefined,
+      });
+
+      const nextMedicines = [...medicines, toProfileMedicine(cloudMedicine)];
+      setMedicines(nextMedicines);
+      await updateMedicines(nextMedicines);
+      setNewMedicine({ id: '', name: '', dosage: '', frequency: '', time: '', notes: '' });
+      setAddingMedicine(false);
+    } catch (error) {
+      console.error('Medicine save failed:', error);
+      Alert.alert('Save failed', 'Could not save medicine. Please try again.');
+    }
+  };
+
+  const handleLanguageSelect = async (lang: PreferredLanguage) => {
+    setPreferredLanguage(lang);
+    await saveProfile({ preferredLanguage: lang });
   };
 
   const addContact = () => {
@@ -183,21 +242,48 @@ export default function EditProfileScreen() {
       Alert.alert('Missing name', 'Please enter your name.');
       return;
     }
-    await saveProfile({
-      uid: user.uid,
-      displayName: displayName.trim(),
-      email: user.email || profile?.email || '',
-      photoURL: user.photoURL || profile?.photoURL,
-      age: age.trim(),
-      bloodGroup,
-      allergies: allergies.trim(),
-      preferredLanguage,
-      medicines,
-      emergencyContacts: contacts,
-    });
-    await updateMedicines(medicines);
-    await updateEmergencyContacts(contacts);
-    router.back();
+    try {
+      const localCloudMeds = medicines.map(toCloudMedicine);
+      const localIds = new Set(localCloudMeds.map((med) => med.id));
+      const cloudById = new Map(cloudMedicines.map((med) => [med.id, med]));
+
+      for (const cloudMedicine of cloudMedicines) {
+        if (!localIds.has(cloudMedicine.id)) {
+          await removeCloudMedicine(cloudMedicine.id);
+        }
+      }
+
+      for (const localMedicine of localCloudMeds) {
+        const existing = cloudById.get(localMedicine.id);
+        if (!existing) {
+          await addCloudMedicine(localMedicine);
+          continue;
+        }
+
+        if (JSON.stringify(existing) !== JSON.stringify(localMedicine)) {
+          await updateCloudMedicine(localMedicine);
+        }
+      }
+
+      await saveProfile({
+        uid: user.uid,
+        displayName: displayName.trim(),
+        email: user.email || profile?.email || '',
+        photoURL: user.photoURL || profile?.photoURL,
+        age: age.trim(),
+        bloodGroup,
+        allergies: allergies.trim(),
+        preferredLanguage,
+        medicines,
+        emergencyContacts: contacts,
+      });
+      await updateMedicines(medicines);
+      await updateEmergencyContacts(contacts);
+      router.back();
+    } catch (error) {
+      console.error('Save changes failed:', error);
+      Alert.alert('Save failed', 'Could not save changes. Please try again.');
+    }
   };
 
   return (
@@ -247,7 +333,11 @@ export default function EditProfileScreen() {
             <TouchableOpacity
               key={lang.value}
               style={[styles.langChip, preferredLanguage === lang.value && styles.chipActive]}
-              onPress={() => setPreferredLanguage(lang.value)}
+              onPress={() => {
+                handleLanguageSelect(lang.value).catch((error) => {
+                  console.error('Language save failed:', error);
+                });
+              }}
               activeOpacity={0.8}
             >
               <Text style={[styles.chipText, preferredLanguage === lang.value && styles.chipTextActive]}>
