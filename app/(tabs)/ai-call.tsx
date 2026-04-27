@@ -360,8 +360,8 @@ export default function AICallScreen() {
   useEffect(() => {
     requestRecordingPermissionsAsync().catch(() => {});
     setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+      allowsRecording: true,
+      playsInSilentMode: true,
     }).catch(() => {});
     return () => { stopRing(); stopTimer(); };
   }, []);
@@ -415,7 +415,7 @@ export default function AICallScreen() {
   // ─── Recording ──────────────────────────────────────────────────────────
   async function startRecording() {
     try {
-      await setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setIsRecording(true);
