@@ -73,6 +73,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="ai-call"
+        options={{
+          title: 'AI Call',
+          headerTitle: '🧠 AI Call',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
+              <AICallLogo size={28} bgColor="transparent" color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="scan"
         options={{
           title: 'Scan',
@@ -84,22 +96,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="ai-call"
-        options={{
-          title: 'AI Call',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
-              <AICallLogo size={28} bgColor="transparent" color={color} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
-          href: null,
           title: 'Profile',
           headerTitle: 'Profile Settings',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name={focused ? 'person-circle' : 'person-circle-outline'} color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -121,6 +124,12 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  tabBarShell: {
+    height: Platform.OS === 'ios' ? 88 : 68,
+    backgroundColor: Colors.cardBg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
   tabBar: {
     height: Platform.OS === 'ios' ? 88 : 68,
     paddingBottom: Platform.OS === 'ios' ? 24 : 10,
@@ -141,6 +150,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+  tabLabelActive: {
+    color: Colors.tabActive,
+  },
+  tabItemActive: {
+    backgroundColor: Colors.primaryLight,
   },
   iconWrapper: {
     width: 40,
