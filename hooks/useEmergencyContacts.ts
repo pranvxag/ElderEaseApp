@@ -1,5 +1,8 @@
 import { EmergencyContact, MOCK_CONTACTS } from '@/constants/data';
-import { useMemo } from 'react';
+import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
+import { db, hasFirebaseConfig } from '@/lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { useEffect, useMemo } from 'react';
 import { useAuth } from './useAuth';
 import { STORAGE_KEYS, useStoredState } from './useStorage';
 
@@ -12,8 +15,28 @@ export function useEmergencyContacts() {
     []
   );
 
+  useEffect(() => {
+    if (!user || !hasFirebaseConfig) return;
+
+    const ref = doc(db, 'users', user.uid, 'profile', 'data');
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot) => {
+        const data = snapshot.data() as { emergencyContacts?: EmergencyContact[] } | undefined;
+        if (snapshot.exists() && data?.emergencyContacts) {
+          setContacts(normalizeEmergencyContacts(data.emergencyContacts));
+        }
+      },
+      (error) => {
+        console.error('useEmergencyContacts onSnapshot error:', error);
+      }
+    );
+
+    return unsubscribe;
+  }, [setContacts, user]);
+
   const normalizedContacts = useMemo(() => {
-    const source = contacts.length > 0 ? contacts : MOCK_CONTACTS;
+    const source = contacts.length > 0 ? normalizeEmergencyContacts(contacts) : MOCK_CONTACTS;
     const hasPrimary = source.some((contact) => Boolean(contact.isPrimary));
 
     return source.map((contact, index) => {

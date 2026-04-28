@@ -1,6 +1,7 @@
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { getEmergencyContactSlotLabel } from '@/lib/emergency-contacts';
 import { useRouter } from 'expo-router';
 import {
     ScrollView,
@@ -61,7 +62,13 @@ export default function ProfileScreen() {
         {profile?.emergencyContacts?.length ? (
           profile.emergencyContacts.map((contact) => (
             <View key={contact.id} style={styles.card}>
-              <Text style={styles.cardTitle}>{contact.name}</Text>
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{contact.name}</Text>
+                  <Text style={styles.cardText}>{getEmergencyContactSlotLabel(contact.slot)}</Text>
+                </View>
+                {contact.isPrimary ? <Text style={styles.primaryTag}>Primary</Text> : null}
+              </View>
               <Text style={styles.cardText}>{contact.relation}</Text>
               <Text style={styles.cardText}>{contact.phone}</Text>
             </View>
@@ -133,6 +140,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     backgroundColor: Colors.inputBg,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   cardTitle: {
     fontSize: FontSizes.md,
     fontWeight: FontWeights.semibold,
@@ -142,6 +154,11 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  primaryTag: {
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   emptyText: {
     color: Colors.textMuted,

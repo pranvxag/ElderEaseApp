@@ -2,15 +2,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Medication } from '../constants/data';
-
-const TIME_LABEL_TO_REMINDER: Record<string, string> = {
-  'Morning (6–9 AM)': '8:00 AM',
-  'Mid-morning (9–12 PM)': '10:00 AM',
-  'Afternoon (12–3 PM)': '1:00 PM',
-  'Evening (3–6 PM)': '5:00 PM',
-  'Night (6–9 PM)': '8:00 PM',
-  'Bedtime (9 PM+)': '9:00 PM',
-};
+import { normalizeTimeSlots, slotToReminderTime } from './medicine';
 
 // ── How notifications appear when app is in foreground ──────────────────────
 Notifications.setNotificationHandler({
@@ -64,7 +56,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 // ── Parse "9:00 AM" → { hour: 9, minute: 0 } ────────────────────────────────
 function parseTime(timeStr: string): { hour: number; minute: number } | null {
-  const normalizedTime = TIME_LABEL_TO_REMINDER[timeStr] ?? timeStr;
+  const normalizedTime = slotToReminderTime(timeStr);
   const match = normalizedTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!match) return null;
 
@@ -78,35 +70,42 @@ function parseTime(timeStr: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
-// ── Schedule a daily repeating reminder for one medication ──────────────────
-export async function scheduleMedicationReminder(med: Medication): Promise<string | null> {
+// ── Schedule daily repeating reminders for one medication ───────────────────
+export async function scheduleMedicationReminder(med: Medication): Promise<string[]> {
   if (Platform.OS === 'web') {
     console.warn('Medication reminders are not supported on web.');
-    return null;
+    return [];
   }
 
-  const time = parseTime(med.time);
-  if (!time) {
-    console.warn(`Could not parse time for medication: ${med.name} (${med.time})`);
-    return null;
+  const notificationIds: string[] = [];
+  const reminderSlots = normalizeTimeSlots(med.times?.length ? med.times : (med.time ? [med.time] : []), med.frequency);
+
+  for (const slot of reminderSlots) {
+    const time = parseTime(slot);
+    if (!time) {
+      console.warn(`Could not parse time for medication: ${med.name} (${slot})`);
+      continue;
+    }
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `💊 Time for ${med.name}`,
+        body: `${med.dosage} — ${med.purpose}`,
+        data: { medicationId: med.id, slot },
+        sound: 'default',
+        ...(Platform.OS === 'android' && { channelId: 'medication-reminders' }),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: time.hour,
+        minute: time.minute,
+      },
+    });
+
+    notificationIds.push(notificationId);
   }
 
-  const notificationId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `💊 Time for ${med.name}`,
-      body: `${med.dosage} — ${med.purpose}`,
-      data: { medicationId: med.id },
-      sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: 'medication-reminders' }),
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: time.hour,
-      minute: time.minute,
-    },
-  });
-
-  return notificationId;
+  return notificationIds;
 }
 
 // ── Cancel a scheduled notification by its ID ────────────────────────────────
@@ -122,13 +121,13 @@ export async function cancelMedicationReminder(notificationId: string): Promise<
 // Returns a map of { medicationId → notificationId }
 export async function scheduleAllReminders(
   medications: Medication[]
-): Promise<Record<string, string>> {
-  const mapping: Record<string, string> = {};
+): Promise<Record<string, string[]>> {
+  const mapping: Record<string, string[]> = {};
 
   for (const med of medications) {
-    const notifId = await scheduleMedicationReminder(med);
-    if (notifId) {
-      mapping[med.id] = notifId;
+    const notifIds = await scheduleMedicationReminder(med);
+    if (notifIds.length > 0) {
+      mapping[med.id] = notifIds;
     }
   }
 

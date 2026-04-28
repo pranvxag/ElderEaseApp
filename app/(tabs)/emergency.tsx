@@ -2,6 +2,7 @@ import { EmergencyContact } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useEmergencyContacts } from '@/hooks/useEmergencyContacts';
 import { useHealthData } from '@/hooks/useHealthData';
+import { getEmergencyContactSlotLabel } from '@/lib/emergency-contacts';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -41,6 +42,7 @@ function ContactCard({
       </View>
       <View style={styles.contactInfo}>
         <Text style={styles.contactName}>{contact.name}</Text>
+        <Text style={styles.contactSlot}>{getEmergencyContactSlotLabel(contact.slot)}</Text>
         <Text style={styles.contactRelation}>{contact.relation}</Text>
         <Text style={styles.contactPhone}>{contact.phone}</Text>
       </View>
@@ -224,7 +226,7 @@ export default function EmergencyScreen() {
             <Text style={styles.sectionTitle}>Emergency Contacts</Text>
             <TouchableOpacity
               style={styles.addContactBtn}
-              onPress={() => Alert.alert('Add Contact', 'Contact management coming soon!')}
+              onPress={() => router.push('/profile/edit')}
             >
               <Ionicons name="add" size={18} color={Colors.primary} />
               <Text style={styles.addContactText}>Add</Text>
@@ -483,6 +485,12 @@ const styles = StyleSheet.create({
   contactRelation: {
     fontSize: FontSizes.sm,
     color: Colors.textSecondary,
+    marginBottom: 2,
+  },
+  contactSlot: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
     marginBottom: 2,
   },
   contactPhone: {

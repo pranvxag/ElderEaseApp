@@ -1,8 +1,17 @@
+export type EmergencyContactSlot =
+  | 'primary-caregiver'
+  | 'secondary-caregiver'
+  | 'doctor'
+  | 'neighbor';
+
 export type EmergencyContact = {
   id: string;
   name: string;
   phone: string;
   relation: string;
+  slot?: EmergencyContactSlot;
+  isPrimary?: boolean;
+  required?: boolean;
 };
 
 export type Medicine = {
@@ -11,6 +20,7 @@ export type Medicine = {
   dosage: string;
   frequency: string;
   time?: string;
+  times?: string[];
   notes?: string;
   createdAt?: string;
   durationDays?: number;

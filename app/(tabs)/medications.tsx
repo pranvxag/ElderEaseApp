@@ -5,21 +5,31 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useState } from 'react';
 import {
     Alert,
+    LayoutAnimation,
     Modal,
     PanResponder,
+    Platform,
     Pressable,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
+    UIManager,
     View,
 } from 'react-native';
+import MedicineTimeSlotPicker from '../../components/medicine-time-slot-picker';
 import { Medication, MedStatus } from '../../constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
+import {
+    formatMedicationScheduleSummary,
+    FREQUENCY_OPTIONS,
+    getDefaultTimeSlots,
+    normalizeTimeSlots,
+    slotToReminderTime,
+} from '../../lib/medicine';
 import { Medicine } from '../../types/user';
-// import { Colors, FontSizes, FontWeights, Spacing, Radii, Shadows } from '@/constants/theme';
-// import { MOCK_MEDICATIONS, Medication, MedStatus } from '@/constants/data';
 
 const STATUS_CONFIG: Record<MedStatus, { label: string; color: string; bg: string; icon: string }> = {
   taken: { label: 'Taken ✓', color: Colors.success, bg: Colors.successLight, icon: 'checkmark-circle' },
@@ -30,30 +40,12 @@ const STATUS_CONFIG: Record<MedStatus, { label: string; color: string; bg: strin
 
 const PILL_COLORS = ['#FF6B6B', '#4ECDC4', '#A78BFA', '#FCD34D', '#60A5FA', '#34D399', '#FB923C'];
 
-const FREQUENCY_OPTIONS = ['Once a day', 'Twice a day', 'Three times a day', 'Weekly', 'As needed'];
-
-const TIME_OPTIONS = [
-  'Morning (6–9 AM)',
-  'Mid-morning (9–12 PM)',
-  'Afternoon (12–3 PM)',
-  'Evening (3–6 PM)',
-  'Night (6–9 PM)',
-  'Bedtime (9 PM+)',
-];
-
-const TIME_TO_REMINDER: Record<string, string> = {
-  'Morning (6–9 AM)': '8:00 AM',
-  'Mid-morning (9–12 PM)': '10:00 AM',
-  'Afternoon (12–3 PM)': '1:00 PM',
-  'Evening (3–6 PM)': '5:00 PM',
-  'Night (6–9 PM)': '8:00 PM',
-  'Bedtime (9 PM+)': '9:00 PM',
-};
-
 const FREQUENCY_TO_TRACKER: Record<string, Medication['frequency']> = {
   'Once a day': 'daily',
   'Twice a day': 'twice-daily',
   'Three times a day': 'daily',
+  'Every 8 hours': 'daily',
+  'Every 12 hours': 'twice-daily',
   Weekly: 'weekly',
   'As needed': 'as-needed',
 };
@@ -155,71 +147,59 @@ const dd = StyleSheet.create({
 
 function MedCard({
   med,
+  onEdit,
   onMarkTaken,
+  onMarkNotTaken,
+  onSnooze,
   onDelete,
+  onUndo,
+  canUndoTaken,
 }: {
   med: Medication;
+  onEdit: (med: Medication) => void;
   onMarkTaken: (id: string) => void;
+  onMarkNotTaken: (id: string) => void;
+  onSnooze: (id: string) => void;
   onDelete: (id: string) => void;
+  onUndo: (id: string) => void;
+  canUndoTaken: (id: string) => boolean;
 }) {
   const cfg = STATUS_CONFIG[med.status];
+  const scheduleSummary = formatMedicationScheduleSummary(med.frequency, med.times?.length ? med.times : [med.time || '9:00 AM']);
   return (
-    <View style={[styles.medCard, med.status === 'taken' && styles.medCardTaken]}>
-      {/* Color strip */}
-      <View style={[styles.medStrip, { backgroundColor: med.color }]} />
+    <View style={[styles.medCardCompact, med.status === 'taken' && styles.medCardTaken]}>
+      <View style={[styles.medLeftCompact, { borderLeftColor: med.color }]}>
+        <Text style={[styles.medNameCompact, med.status === 'taken' && styles.textDim]} numberOfLines={1}>
+          {med.name}
+        </Text>
+        <Text style={styles.medMetaCompact}>{med.dosage} • {scheduleSummary}</Text>
+      </View>
 
-      <View style={styles.medBody}>
-        <View style={styles.medTop}>
-          <View style={styles.medLeft}>
-            <Text style={[styles.medName, med.status === 'taken' && styles.textDim]}>{med.name}</Text>
-            <Text style={styles.medDose}>{med.dosage}</Text>
-            <Text style={styles.medPurpose}>🎯 {med.purpose}</Text>
-          </View>
-          <View style={styles.medRight}>
-            <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-              <Ionicons name={cfg.icon as any} size={14} color={cfg.color} />
-              <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
-            </View>
-            <Text style={styles.medTime}>{med.time}</Text>
-          </View>
+      <View style={styles.medRightCompact}>
+        <View style={[styles.statusBadgeCompact, { backgroundColor: cfg.bg }]}> 
+          <Ionicons name={cfg.icon as any} size={14} color={cfg.color} />
+          <Text style={[styles.statusTextCompact, { color: cfg.color }]}>{cfg.label}</Text>
         </View>
 
-        {med.instructions && (
-          <View style={styles.instructionsRow}>
-            <Ionicons name="information-circle-outline" size={15} color={Colors.textMuted} />
-            <Text style={styles.instructionsText}>{med.instructions}</Text>
-          </View>
+        {med.status !== 'taken' ? (
+          <TouchableOpacity style={styles.btnTakenCompact} onPress={() => onMarkTaken(med.id)} activeOpacity={0.85}>
+            <Text style={styles.btnTakenText}>Mark Taken</Text>
+          </TouchableOpacity>
+        ) : (
+          canUndoTaken(med.id) && (
+            <TouchableOpacity style={styles.btnUndoCompact} onPress={() => onUndo(med.id)} activeOpacity={0.85}>
+              <Text style={styles.btnUndoText}>Undo</Text>
+            </TouchableOpacity>
+          )
         )}
 
-        <View style={styles.medFooter}>
-          <View style={styles.streakRow}>
-            <Text style={styles.streakFire}>🔥</Text>
-            <Text style={styles.streakText}>{med.streak} day streak</Text>
-          </View>
-
-          <View style={styles.medActions}>
-            {med.status !== 'taken' && (
-              <TouchableOpacity
-                style={styles.btnTaken}
-                onPress={() => onMarkTaken(med.id)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="checkmark" size={16} color="#fff" />
-                <Text style={styles.btnTakenText}>Mark Taken</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.btnDelete}
-              onPress={() =>
-                Alert.alert('Remove Medication', `Remove ${med.name} from your list?`, [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Remove', style: 'destructive', onPress: () => onDelete(med.id) },
-                ])
-              }
-            >
-              <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
-            </TouchableOpacity>
-          </View>
+        <View style={styles.iconRowCompact}>
+          <TouchableOpacity onPress={() => onEdit(med)} style={styles.iconBtn} activeOpacity={0.8}>
+            <Ionicons name="create-outline" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => onDelete(med.id)} style={styles.iconBtn} activeOpacity={0.8}>
+            <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -227,21 +207,43 @@ function MedCard({
 }
 
 export default function MedicationsScreen() {
-  const { meds, addMedication, markTaken, deleteMed, loading } = useMedications();
+  const {
+    meds,
+    addMedication,
+    markTaken,
+    markNotTaken,
+    snoozeMedication,
+    undoTaken,
+    canUndoTaken,
+    deleteMed,
+    recentMedicineLogs,
+    loading,
+  } = useMedications();
   const {
     addMedicine: addProfileMedicine,
     removeMedicine: removeProfileMedicine,
+    updateMedicine: updateProfileMedicine,
     loading: profileMedicinesLoading,
   } = useMedicines();
   const { profile, saveProfile, loading: profileLoading } = useUserProfile();
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<MedStatus | 'all'>('all');
+  const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
+  const [selectedLogDate, setSelectedLogDate] = useState('');
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   // Add med form state
   const [newName, setNewName] = useState('');
   const [newDosage, setNewDosage] = useState('');
   const [newFrequency, setNewFrequency] = useState('');
-  const [newTimeLabel, setNewTimeLabel] = useState('');
+  const [newTimeSlots, setNewTimeSlots] = useState<string[]>(getDefaultTimeSlots('Once a day'));
   const [newNotes, setNewNotes] = useState('');
   const [newDurationDays, setNewDurationDays] = useState('');
   const [selectedColor, setSelectedColor] = useState(PILL_COLORS[0]);
@@ -262,26 +264,73 @@ export default function MedicationsScreen() {
     []
   );
 
-  if (loading || profileLoading || profileMedicinesLoading) return null;
-
   const takenCount = meds.filter((m) => m.status === 'taken').length;
   const totalCount = meds.length;
   const adherence = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
 
   const filtered = filter === 'all' ? meds : meds.filter((m) => m.status === filter);
 
+  React.useEffect(() => {
+    if (recentMedicineLogs.length === 0) return;
+    const hasSelected = recentMedicineLogs.some((day) => day.date === selectedLogDate);
+    if (!selectedLogDate || !hasSelected) {
+      setSelectedLogDate(recentMedicineLogs[recentMedicineLogs.length - 1].date);
+    }
+  }, [recentMedicineLogs, selectedLogDate]);
+
+  if (loading || profileLoading || profileMedicinesLoading) return null;
+
+  function openAddModal() {
+    setEditingMedication(null);
+    setNewName('');
+    setNewDosage('');
+    setNewFrequency('');
+    setNewTimeSlots(getDefaultTimeSlots('Once a day'));
+    setNewNotes('');
+    setNewDurationDays('');
+    setSelectedColor(PILL_COLORS[0]);
+    setShowModal(true);
+  }
+
+  function openEditModal(med: Medication) {
+    setEditingMedication(med);
+    setNewName(med.name);
+    setNewDosage(med.dosage);
+    setNewFrequency(med.frequency === 'twice-daily' ? 'Twice a day' : med.frequency === 'weekly' ? 'Weekly' : med.frequency === 'as-needed' ? 'As needed' : 'Once a day');
+    setNewTimeSlots(normalizeTimeSlots(med.times?.length ? med.times : [med.time], med.frequency));
+    setNewNotes(med.instructions || med.purpose || '');
+    setNewDurationDays(med.durationDays ? String(med.durationDays) : '');
+    setSelectedColor(med.color);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setEditingMedication(null);
+  }
+
   function handleMarkTaken(id: string) {
     markTaken(id);
+  }
+
+  function handleMarkNotTaken(id: string) {
+    markNotTaken(id);
+  }
+
+  function handleSnooze(id: string) {
+    snoozeMedication(id);
+  }
+
+  function handleUndo(id: string) {
+    undoTaken(id);
   }
 
   async function handleDelete(id: string) {
     try {
       const nextProfileMedicines = (profile?.medicines ?? []).filter((medicine) => medicine.id !== id);
-      await Promise.all([
-        deleteMed(id),
-        removeProfileMedicine(id),
-        saveProfile({ medicines: nextProfileMedicines }),
-      ]);
+      await deleteMed(id);
+      await removeProfileMedicine(id);
+      await saveProfile({ medicines: nextProfileMedicines });
     } catch (error) {
       console.error('Delete medicine failed:', error);
       Alert.alert('Delete failed', 'Could not remove medicine right now. Please try again.');
@@ -289,7 +338,7 @@ export default function MedicationsScreen() {
   }
 
   function toReminderTime(label: string): string {
-    return TIME_TO_REMINDER[label] || '9:00 AM';
+    return slotToReminderTime(label);
   }
 
   function toTrackerFrequency(label: string): Medication['frequency'] {
@@ -304,29 +353,31 @@ export default function MedicationsScreen() {
   }
 
   async function handleAddMed() {
-    if (!newName.trim() || !newDosage.trim() || !newFrequency.trim() || !newTimeLabel.trim()) {
-      Alert.alert('Missing Info', 'Please fill medicine name, dosage, frequency, and time.');
+    if (!newName.trim() || !newDosage.trim() || !newFrequency.trim() || newTimeSlots.length === 0) {
+      Alert.alert('Missing Info', 'Please fill medicine name, dosage, frequency, and time slots.');
       return;
     }
 
     const name = newName.trim();
     const dosage = newDosage.trim();
     const frequencyLabel = newFrequency.trim();
-    const timeLabel = newTimeLabel.trim();
     const notes = newNotes.trim();
     const durationDays = parseDurationDays(newDurationDays);
-    const reminderTime = toReminderTime(timeLabel);
+    const selectedTimes = normalizeTimeSlots(newTimeSlots, frequencyLabel);
+    const reminderTime = toReminderTime(selectedTimes[0]);
     const createdAt = new Date().toISOString();
     const expiresAt = durationDays
       ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString()
       : undefined;
 
-    const profileMedicine: Medicine = {
-      id: Date.now().toString(),
+    const medicineId = editingMedication?.id ?? Date.now().toString();
+    const baseMedicine: Medicine = {
+      id: medicineId,
       name,
       dosage,
       frequency: frequencyLabel,
-      time: timeLabel,
+      time: selectedTimes[0],
+      times: selectedTimes,
       notes: notes || undefined,
       createdAt,
       durationDays,
@@ -334,15 +385,16 @@ export default function MedicationsScreen() {
     };
 
     const newMed: Medication = {
-      id: profileMedicine.id,
+      id: medicineId,
       name,
       dosage,
       time: reminderTime,
+      times: selectedTimes,
       frequency: toTrackerFrequency(frequencyLabel),
       color: selectedColor,
-      status: 'upcoming',
-      purpose: notes || 'As prescribed',
-      streak: 0,
+      status: editingMedication?.status ?? 'upcoming',
+      purpose: notes || editingMedication?.purpose || 'As prescribed',
+      streak: editingMedication?.streak ?? 0,
       instructions: notes || undefined,
       createdAt,
       durationDays,
@@ -350,14 +402,19 @@ export default function MedicationsScreen() {
     };
 
     try {
-      const nextProfileMedicines = [...(profile?.medicines ?? []), profileMedicine];
-      await Promise.all([
-        saveProfile({ medicines: nextProfileMedicines }),
-        addProfileMedicine({
-          id: profileMedicine.id,
+      const existingMedicines = profile?.medicines ?? [];
+      const nextProfileMedicines = editingMedication
+        ? existingMedicines.map((medicine) => (medicine.id === medicineId ? baseMedicine : medicine))
+        : [...existingMedicines, baseMedicine];
+
+      await saveProfile({ medicines: nextProfileMedicines });
+
+      if (editingMedication) {
+        await updateProfileMedicine({
+          id: medicineId,
           name,
           dosage,
-          times: [reminderTime],
+          times: selectedTimes,
           enabled: true,
           frequency: frequencyLabel,
           time: reminderTime,
@@ -365,18 +422,33 @@ export default function MedicationsScreen() {
           createdAt,
           durationDays,
           expiresAt,
-        }),
-      ]);
-      await addMedication(newMed);
+        });
+        await updateMedication(newMed);
+      } else {
+        await addProfileMedicine({
+          id: medicineId,
+          name,
+          dosage,
+          times: selectedTimes,
+          enabled: true,
+          frequency: frequencyLabel,
+          time: reminderTime,
+          notes: notes || undefined,
+          createdAt,
+          durationDays,
+          expiresAt,
+        });
+        await addMedication(newMed);
+      }
 
       setNewName('');
       setNewDosage('');
       setNewFrequency('');
-      setNewTimeLabel('');
+      setNewTimeSlots(getDefaultTimeSlots('Once a day'));
       setNewNotes('');
       setNewDurationDays('');
       setSelectedColor(PILL_COLORS[0]);
-      setShowModal(false);
+      closeModal();
     } catch (error) {
       console.error('Add medicine failed:', error);
       Alert.alert('Save failed', 'Could not add medicine right now. Please try again.');
@@ -414,7 +486,10 @@ export default function MedicationsScreen() {
           <TouchableOpacity
             key={f}
             style={[styles.filterChip, filter === f && styles.filterChipActive]}
-            onPress={() => setFilter(f)}
+            onPress={() => {
+              if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setFilter(f);
+            }}
           >
             <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>
               {f === 'all'
@@ -425,8 +500,23 @@ export default function MedicationsScreen() {
         ))}
       </ScrollView>
 
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Today&apos;s Medicines</Text>
+          <Text style={styles.sectionSubtitle}>Keep only today&apos;s schedule visible here</Text>
+        </View>
+        <View style={styles.sectionPill}>
+          <Text style={styles.sectionPillText}>{meds.length} active</Text>
+        </View>
+      </View>
+
       {/* ── Med List ── */}
-      <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 800); }} />}
+      >
         {filtered.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={{ fontSize: 48 }}>💊</Text>
@@ -434,19 +524,85 @@ export default function MedicationsScreen() {
           </View>
         )}
         {filtered.map((med) => (
-          <MedCard key={med.id} med={med} onMarkTaken={handleMarkTaken} onDelete={handleDelete} />
+          <MedCard
+            key={med.id}
+            med={med}
+            onEdit={openEditModal}
+            onMarkTaken={handleMarkTaken}
+            onMarkNotTaken={handleMarkNotTaken}
+            onSnooze={handleSnooze}
+            onDelete={handleDelete}
+            onUndo={handleUndo}
+            canUndoTaken={canUndoTaken}
+          />
         ))}
         <View style={{ height: 80 }} />
       </ScrollView>
 
+      {/* History moved to floating button/modal */}
+
+      <TouchableOpacity style={styles.historyFab} onPress={() => setShowHistoryModal(true)} activeOpacity={0.85}>
+        <Ionicons name="time-outline" size={22} color="#fff" />
+      </TouchableOpacity>
+
+      <Modal visible={showHistoryModal} transparent animationType="slide" onRequestClose={() => setShowHistoryModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowHistoryModal(false)}>
+          <Pressable style={[styles.modalSheet, { maxHeight: '70%' }]} onPress={(e) => e.stopPropagation()}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={styles.historyTitle}>7-Day History</Text>
+              <TouchableOpacity onPress={() => setShowHistoryModal(false)} style={styles.closeButton}>
+                <Ionicons name="close" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyChips}>
+              {recentMedicineLogs.map((day) => (
+                <TouchableOpacity
+                  key={day.date}
+                  style={[styles.historyChip, selectedLogDate === day.date && styles.historyChipActive]}
+                  onPress={() => setSelectedLogDate(day.date)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.historyChipText, selectedLogDate === day.date && styles.historyChipTextActive]}>
+                    {day.date.slice(5).replace('-', '/')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={{ marginTop: 8 }}>
+              {recentMedicineLogs
+                .filter((day) => day.date === selectedLogDate)
+                .map((day) => (
+                  <ScrollView key={day.date} style={styles.historyCard} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {day.entries.length === 0 ? (
+                      <Text style={styles.historyEmpty}>No log entries for this day yet.</Text>
+                    ) : (
+                      day.entries.map((entry) => (
+                        <View key={entry.id} style={styles.historyRow}>
+                          <View style={styles.historyRowLeft}>
+                            <Text style={styles.historyMedicine}>{entry.medicineName}</Text>
+                            <Text style={styles.historyMeta}>{entry.scheduledTime}</Text>
+                          </View>
+                          <Text style={styles.historyStatus}>{entry.status.replace('_', ' ')}</Text>
+                        </View>
+                      ))
+                    )}
+                  </ScrollView>
+                ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* ── Add FAB ── */}
-      <TouchableOpacity style={styles.fab} onPress={() => setShowModal(true)} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.fab} onPress={openAddModal} activeOpacity={0.85}>
         <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>
 
       {/* ── Add Medication Modal ── */}
       <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={closeModal}>
           <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader} {...swipeDownResponder.panHandlers}>
               <View style={styles.dragHandleArea}>
@@ -455,88 +611,88 @@ export default function MedicationsScreen() {
               </View>
               <TouchableOpacity
                 style={styles.closeButton}
-                onPress={() => setShowModal(false)}
+                onPress={closeModal}
                 activeOpacity={0.8}
                 accessibilityRole="button"
                 accessibilityLabel="Close add medication form"
               >
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                <Ionicons name="close" size={20} color={Colors.primary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalTitle}>Add New Medication 💊</Text>
+            <Text style={styles.modalTitle}>{editingMedication ? 'Edit Medication' : 'Add New Medication'}</Text>
 
-            <Text style={styles.fieldLabel}>Medicine Name *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Aspirin"
-              value={newName}
-              onChangeText={setNewName}
-              placeholderTextColor={Colors.textMuted}
-            />
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+              <Text style={styles.fieldLabel}>Medicine Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Aspirin"
+                value={newName}
+                onChangeText={setNewName}
+                placeholderTextColor={Colors.textMuted}
+              />
 
-            <Text style={styles.fieldLabel}>Dosage</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 75mg — 1 tablet"
-              value={newDosage}
-              onChangeText={setNewDosage}
-              placeholderTextColor={Colors.textMuted}
-            />
+              <Text style={styles.fieldLabel}>Dosage</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 75mg — 1 tablet"
+                value={newDosage}
+                onChangeText={setNewDosage}
+                placeholderTextColor={Colors.textMuted}
+              />
 
-            <Dropdown
-              label="Frequency *"
-              value={newFrequency}
-              options={FREQUENCY_OPTIONS}
-              onSelect={setNewFrequency}
-              placeholder="Select frequency"
-            />
+              <Dropdown
+                label="Frequency *"
+                value={newFrequency}
+                options={FREQUENCY_OPTIONS}
+                onSelect={setNewFrequency}
+                placeholder="Select frequency"
+              />
 
-            <Dropdown
-              label="Time *"
-              value={newTimeLabel}
-              options={TIME_OPTIONS}
-              onSelect={setNewTimeLabel}
-              placeholder="Select time"
-            />
+              <MedicineTimeSlotPicker
+                frequency={newFrequency}
+                selectedTimes={newTimeSlots}
+                onChange={setNewTimeSlots}
+              />
 
-            <Text style={styles.fieldLabel}>Notes / Purpose</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Take after food"
-              value={newNotes}
-              onChangeText={setNewNotes}
-              placeholderTextColor={Colors.textMuted}
-            />
+              <Text style={styles.fieldLabel}>Notes / Purpose</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Take after food"
+                value={newNotes}
+                onChangeText={setNewNotes}
+                placeholderTextColor={Colors.textMuted}
+              />
 
-            <Text style={styles.fieldLabel}>For How Many Days (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 7"
-              value={newDurationDays}
-              onChangeText={setNewDurationDays}
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="number-pad"
-            />
-            <Text style={styles.helperText}>
-              Leave empty to keep this medicine until you delete it.
-            </Text>
+              <Text style={styles.fieldLabel}>For How Many Days (Optional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 7"
+                value={newDurationDays}
+                onChangeText={setNewDurationDays}
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="number-pad"
+              />
+              <Text style={styles.helperText}>
+                Leave empty to keep this medicine until you delete it.
+              </Text>
 
-            <Text style={styles.fieldLabel}>Pill Color</Text>
-            <View style={styles.colorRow}>
-              {PILL_COLORS.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.colorDot, { backgroundColor: c }, selectedColor === c && styles.colorDotSelected]}
-                  onPress={() => setSelectedColor(c)}
-                >
-                  {selectedColor === c && <Ionicons name="checkmark" size={14} color="#fff" />}
-                </TouchableOpacity>
-              ))}
-            </View>
+              <Text style={styles.fieldLabel}>Pill Color</Text>
+              <View style={styles.colorRow}>
+                {PILL_COLORS.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.colorDot, { backgroundColor: c }, selectedColor === c && styles.colorDotSelected]}
+                    onPress={() => setSelectedColor(c)}
+                  >
+                    {selectedColor === c && <Ionicons name="checkmark" size={12} color="#fff" />}
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <TouchableOpacity style={styles.addBtn} onPress={handleAddMed} activeOpacity={0.85}>
-              <Text style={styles.addBtnText}>Add Medication</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.addBtn} onPress={handleAddMed} activeOpacity={0.85}>
+                <Text style={styles.addBtnText}>{editingMedication ? 'Save Changes' : 'Add Medication'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -567,17 +723,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   summaryCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
   },
   summaryPct: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.heavy,
     color: '#fff',
   },
@@ -595,7 +751,8 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.sm,
+    paddingTop: Spacing.sm,
+    paddingBottom: 6,
     gap: 8,
   },
   filterChip: {
@@ -618,35 +775,111 @@ const styles = StyleSheet.create({
   filterChipTextActive: { color: '#fff' },
 
   list: { flex: 1 },
-  listContent: { padding: Spacing.base },
+  listContent: { paddingHorizontal: Spacing.base, paddingTop: 8, paddingBottom: Spacing.base },
+
+  sectionHeader: {
+    marginHorizontal: Spacing.base,
+    marginTop: Spacing.sm,
+    marginBottom: 6,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radii.lg,
+    backgroundColor: Colors.cardBg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...Shadows.card,
+  },
+  sectionTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.textPrimary,
+  },
+  sectionSubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  sectionPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.primaryLight,
+  },
+  sectionPillText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
 
   medCard: {
     backgroundColor: Colors.cardBg,
     borderRadius: Radii.lg,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
     flexDirection: 'row',
     overflow: 'hidden',
     ...Shadows.card,
   },
   medCardTaken: { opacity: 0.75 },
+  medCardCompact: {
+    backgroundColor: Colors.cardBg,
+    borderRadius: Radii.md,
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: Spacing.base,
+    ...Shadows.card,
+  },
+  medLeftCompact: {
+    flex: 1,
+    borderLeftWidth: 4,
+    paddingLeft: 10,
+    paddingRight: 8,
+  },
+  medNameCompact: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.textPrimary,
+  },
+  medMetaCompact: {
+    fontSize: FontSizes.xs,
+    color: Colors.textMuted,
+    marginTop: 4,
+  },
+  medRightCompact: { alignItems: 'flex-end', marginLeft: 8 },
+  statusBadgeCompact: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: Radii.full },
+  statusTextCompact: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
+  btnTakenCompact: { backgroundColor: Colors.primary, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radii.full, marginTop: 8 },
+  btnUndoCompact: { backgroundColor: Colors.successLight, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radii.full, marginTop: 8 },
+  btnTakenText: { color: '#fff', fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
+  btnUndoText: { color: Colors.success, fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
+  iconRowCompact: { flexDirection: 'row', marginTop: 8 },
+  iconBtn: { marginLeft: 8, padding: 6 },
   medStrip: { width: 5 },
-  medBody: { flex: 1, padding: Spacing.base },
-  medTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.sm },
+  medBody: { flex: 1, paddingHorizontal: Spacing.base, paddingVertical: 10 },
+  medTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   medLeft: { flex: 1, marginRight: Spacing.md },
   medName: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
     color: Colors.textPrimary,
     marginBottom: 2,
   },
   textDim: { color: Colors.textSecondary },
   medDose: {
-    fontSize: FontSizes.sm,
+    fontSize: 12,
     color: Colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  medSchedule: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+    marginBottom: 2,
   },
   medPurpose: {
-    fontSize: FontSizes.xs,
+    fontSize: 10,
     color: Colors.textMuted,
   },
   medRight: { alignItems: 'flex-end' },
@@ -691,6 +924,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
   },
   medActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  statusActionGroup: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   btnTaken: {
     backgroundColor: Colors.primary,
     flexDirection: 'row',
@@ -703,6 +937,30 @@ const styles = StyleSheet.create({
   btnTakenText: {
     color: '#fff',
     fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  btnSecondaryAction: {
+    backgroundColor: Colors.inputBg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Radii.full,
+  },
+  btnSecondaryActionText: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  btnUndo: {
+    backgroundColor: Colors.successLight,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Radii.full,
+  },
+  btnUndoText: {
+    color: Colors.success,
+    fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
   },
   btnDelete: {
@@ -736,6 +994,118 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.strong,
+    zIndex: 1000,
+    elevation: 12,
+  },
+
+  historyFab: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.strong,
+    zIndex: 1000,
+    elevation: 12,
+  },
+
+  historyPanel: {
+    marginHorizontal: Spacing.base,
+    marginTop: Spacing.xs,
+    marginBottom: 12,
+    backgroundColor: Colors.cardBg,
+    borderRadius: Radii.lg,
+    padding: Spacing.base,
+    maxHeight: 250,
+    ...Shadows.card,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  historyTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.textPrimary,
+  },
+  historySubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  historyCountPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.inputBg,
+  },
+  historyCountText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.textSecondary,
+  },
+  historyChips: {
+    gap: 8,
+    paddingBottom: 8,
+  },
+  historyChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.inputBg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  historyChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  historyChipText: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    fontWeight: FontWeights.semibold,
+  },
+  historyChipTextActive: { color: '#fff' },
+  historyCard: {
+    backgroundColor: Colors.background,
+    borderRadius: Radii.md,
+    padding: Spacing.sm,
+    maxHeight: 150,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  historyRowLeft: { flex: 1, marginRight: Spacing.sm },
+  historyMedicine: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.textPrimary,
+  },
+  historyMeta: {
+    fontSize: FontSizes.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  historyStatus: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    textTransform: 'capitalize',
+  },
+  historyEmpty: {
+    fontSize: FontSizes.sm,
+    color: Colors.textMuted,
   },
 
   // Modal
@@ -746,56 +1116,57 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     backgroundColor: Colors.cardBg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.xl,
-    paddingBottom: 40,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: Spacing.md,
+    paddingBottom: 24,
+    maxHeight: '76%',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
-    paddingTop: 2,
-    paddingBottom: 6,
+    marginBottom: Spacing.sm,
+    paddingTop: 0,
+    paddingBottom: 4,
   },
   dragHandleArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 6,
   },
   modalHandle: {
-    width: 40,
-    height: 4,
+    width: 32,
+    height: 3,
     backgroundColor: Colors.border,
     borderRadius: 2,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   swipeHint: {
     fontSize: FontSizes.xs,
     color: Colors.textMuted,
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.inputBg,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.heavy,
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
     color: Colors.textPrimary,
-    marginBottom: Spacing.base,
+    marginBottom: Spacing.sm,
   },
   fieldLabel: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
     color: Colors.textSecondary,
-    marginBottom: 6,
-    marginTop: 10,
+    marginBottom: 4,
+    marginTop: 6,
   },
   input: {
     backgroundColor: Colors.inputBg,
@@ -803,41 +1174,44 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: Radii.md,
     paddingHorizontal: Spacing.base,
-    paddingVertical: 14,
+    paddingVertical: 9,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
+    marginBottom: 2,
   },
   helperText: {
-    marginTop: 6,
+    marginTop: 3,
+    marginBottom: 2,
     fontSize: FontSizes.xs,
     color: Colors.textMuted,
   },
   colorRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 6,
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 2,
   },
   colorDot: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   colorDotSelected: {
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: Colors.textPrimary,
   },
   addBtn: {
     backgroundColor: Colors.primary,
     borderRadius: Radii.lg,
-    paddingVertical: 16,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: Spacing.xl,
+    marginTop: Spacing.lg,
   },
   addBtnText: {
     color: '#fff',
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
   },
 });

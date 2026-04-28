@@ -1,3 +1,4 @@
+import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
 import { useAuth } from './useAuth';
 import { useUserProfile } from './useUserProfile';
 
@@ -26,8 +27,8 @@ export function useProfile() {
   const legacyProfile: LegacyProfile = profile
     ? {
         name: profile.displayName || user?.displayName || 'User',
-        caregiverName: profile.emergencyContacts[0]?.name || 'Primary Contact',
-        caregiverPhone: profile.emergencyContacts[0]?.phone || '',
+        caregiverName: normalizeEmergencyContacts(profile.emergencyContacts).find((contact) => contact.isPrimary)?.name || 'Primary Contact',
+        caregiverPhone: normalizeEmergencyContacts(profile.emergencyContacts).find((contact) => contact.isPrimary)?.phone || '',
         remindersEnabled: true,
         reminderLeadMinutes: 30,
         voiceConsent: false,

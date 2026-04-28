@@ -79,6 +79,32 @@ try {
 
 export { analytics, auth, db, hasFirebaseConfig };
 
+export function cleanForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map((v) => cleanForFirestore(v)) as unknown as T;
+  if (typeof obj !== 'object') return obj;
+
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (v === undefined) continue;
+    if (v === null) {
+      out[k] = null;
+      continue;
+    }
+    if (Array.isArray(v)) {
+      out[k] = v.map((item) => cleanForFirestore(item));
+      continue;
+    }
+    if (typeof v === 'object') {
+      out[k] = cleanForFirestore(v as any);
+      continue;
+    }
+    out[k] = v;
+  }
+
+  return out as T;
+}
+
 
 // import { initializeFirestore } from 'firebase/firestore';
 // import { persistentLocalCache } from 'firebase/firestore/local_cache';  

@@ -1,5 +1,7 @@
 // Shared types for ElderEase
 
+import type { EmergencyContactSlot } from '@/types/user';
+
 export type MedStatus = 'upcoming' | 'taken' | 'missed' | 'skipped';
 export type MedFrequency = 'daily' | 'twice-daily' | 'weekly' | 'as-needed';
 
@@ -8,6 +10,7 @@ export interface Medication {
   name: string;
   dosage: string;
   time: string; // "09:00 AM"
+  times?: string[];
   frequency: MedFrequency;
   color: string; // pill color for visual
   status: MedStatus;
@@ -64,9 +67,11 @@ export interface EmergencyContact {
   name: string;
   relation: string;
   phone: string;
-  isPrimary: boolean;
-  initials: string;
-  color: string;
+  isPrimary?: boolean;
+  initials?: string;
+  color?: string;
+  slot?: EmergencyContactSlot;
+  required?: boolean;
 }
 
 // ── Mock Data ──────────────────────────────────────────────
@@ -77,6 +82,7 @@ export const MOCK_MEDICATIONS: Medication[] = [
     name: 'Aspirin',
     dosage: '75mg — 1 tablet',
     time: '9:00 AM',
+    times: ['Morning (6–9 AM)'],
     frequency: 'daily',
     color: '#FF6B6B',
     status: 'taken',
@@ -89,6 +95,7 @@ export const MOCK_MEDICATIONS: Medication[] = [
     name: 'Metformin',
     dosage: '500mg — 1 tablet',
     time: '1:00 PM',
+    times: ['Before Lunch (11 AM–12 PM)', 'After Lunch (1–3 PM)'],
     frequency: 'twice-daily',
     color: '#4ECDC4',
     status: 'upcoming',
@@ -101,6 +108,7 @@ export const MOCK_MEDICATIONS: Medication[] = [
     name: 'Amlodipine',
     dosage: '5mg — 1 tablet',
     time: '8:00 PM',
+    times: ['Evening (5–8 PM)'],
     frequency: 'daily',
     color: '#A78BFA',
     status: 'upcoming',
@@ -113,6 +121,7 @@ export const MOCK_MEDICATIONS: Medication[] = [
     name: 'Vitamin D3',
     dosage: '1000 IU — 1 capsule',
     time: '9:00 AM',
+    times: ['Morning (6–9 AM)'],
     frequency: 'daily',
     color: '#FCD34D',
     status: 'taken',
@@ -210,6 +219,8 @@ export const MOCK_CONTACTS: EmergencyContact[] = [
     isPrimary: true,
     initials: 'PS',
     color: '#1A7A6E',
+    slot: 'primary-caregiver',
+    required: true,
   },
   {
     id: '2',
@@ -219,6 +230,7 @@ export const MOCK_CONTACTS: EmergencyContact[] = [
     isPrimary: false,
     initials: 'RS',
     color: '#3B82F6',
+    slot: 'secondary-caregiver',
   },
   {
     id: '3',
@@ -228,6 +240,8 @@ export const MOCK_CONTACTS: EmergencyContact[] = [
     isPrimary: false,
     initials: 'MJ',
     color: '#8B5CF6',
+    slot: 'doctor',
+    required: true,
   },
   {
     id: '4',
@@ -237,6 +251,7 @@ export const MOCK_CONTACTS: EmergencyContact[] = [
     isPrimary: false,
     initials: 'SN',
     color: '#F59E0B',
+    slot: 'neighbor',
   },
 ];
 

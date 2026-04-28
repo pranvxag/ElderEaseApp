@@ -6,6 +6,22 @@ Release note: updates applied Apr 27, 2026 — switched the AI call flow to Groq
 
 ---
 
+
+29/04
+v5.0.0  
+
+## Recent Updates
+
+### Firebase Firestore Fix
+- Fixed "Unsupported field value: undefined" error when writing to Firestore
+- Added cleanForFirestore() utility in lib/firebase.ts that strips undefined 
+  fields before any Firestore write
+- Applied cleanForFirestore() across all write helpers in the codebase
+- Affected path: users/{uid}/profile/data
+
+
+
+
 **Quick summary of changes (Apr 27, 2026)**
 - **Server proxy**: Added a local Express proxy at `/server` which forwards AI calls to Groq and speech calls to Google Text-to-Speech and Speech-to-Text APIs. See [server/index.js](server/index.js).
 - **Client updates**: `app/(tabs)/ai-call.tsx` now calls the proxy (`EXPO_PUBLIC_API_PROXY_URL`) instead of embedding API keys. See [app/(tabs)/ai-call.tsx](app/(tabs)/ai-call.tsx).

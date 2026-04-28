@@ -58,8 +58,13 @@ export async function addMedicine(uid: string, medicine: NewMedicineInput): Prom
     expiresAt: medicine.expiresAt,
   };
 
+  // Remove undefined fields before sending to Firebase
+  const cleanMedicine = Object.fromEntries(
+    Object.entries(newMedicine).filter(([, value]) => value !== undefined)
+  ) as FirestoreMedicine;
+
   await updateDoc(profileDocRef(uid), {
-    medicines: arrayUnion(newMedicine),
+    medicines: arrayUnion(cleanMedicine),
   });
 
   return newMedicine;
@@ -82,6 +87,11 @@ export async function removeMedicine(uid: string, medicineId: string): Promise<v
 export async function updateMedicine(uid: string, updatedMedicine: FirestoreMedicine): Promise<void> {
   const ref = profileDocRef(uid);
 
+  // Remove undefined fields before sending to Firebase
+  const cleanMedicine = Object.fromEntries(
+    Object.entries(updatedMedicine).filter(([, value]) => value !== undefined)
+  ) as FirestoreMedicine;
+
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists()) {
@@ -99,7 +109,7 @@ export async function updateMedicine(uid: string, updatedMedicine: FirestoreMedi
     });
 
     transaction.update(ref, {
-      medicines: arrayUnion(updatedMedicine),
+      medicines: arrayUnion(cleanMedicine),
     });
   });
 }

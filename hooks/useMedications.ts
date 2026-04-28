@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Medication, MOCK_MEDICATIONS } from '../constants/data';
 import {
+    appendMedicineLog,
+    ensureDailyMedicineLogs,
+    getLocalDateKey,
+    getRecentMedicineLogs,
+    MedicineLogDay,
+    MedicineLogEntry,
+    MedicineLogStatus,
+    subscribeToMedicineLogDate,
+} from '../lib/medicineLogs';
+import {
     cancelMedicationReminder,
     requestNotificationPermission,
     scheduleMedicationReminder,
@@ -15,6 +25,29 @@ function isExpiredMedication(expiresAt?: string): boolean {
   return Date.now() > expiry;
 }
 
+function getNotificationIds(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function getScheduledTime(med?: Medication): string {
+  if (!med) return '9:00 AM';
+  return med.time || med.times?.[0] || '9:00 AM';
+}
+
+function toUiStatus(status: MedicineLogStatus | undefined): Medication['status'] {
+  if (status === 'taken') return 'taken';
+  if (status === 'not_taken') return 'missed';
+  if (status === 'snoozed') return 'skipped';
+  return 'upcoming';
+}
+
+function buildMedicineSeedKey(meds: Medication[]): string {
+  return meds
+    .map((med) => [med.id, med.name, med.dosage, med.time ?? '', med.times?.join(',') ?? '', med.frequency].join('~'))
+    .join('|');
+}
+
 export function useMedications() {
   const { user } = useAuth();
   const uid = user?.uid ?? 'anonymous';
@@ -24,11 +57,36 @@ export function useMedications() {
     MOCK_MEDICATIONS
   );
   const [notificationMap, setNotificationMap, mappingsLoading] = useStoredState<
-    Record<string, string>
+    Record<string, string[]>
   >(STORAGE_KEYS.NOTIFICATION_MAP(uid), {});
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [recentMedicineLogs, setRecentMedicineLogs] = useState<MedicineLogDay[]>([]);
+  const [undoEntries, setUndoEntries] = useState<
+    Record<string, { previousStreak: number; expiresAt: number }>
+  >({});
 
   const loading = medsLoading || mappingsLoading;
+  const medicineSeedKey = useMemo(() => buildMedicineSeedKey(meds), [meds]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setUndoEntries((prev) => {
+        let changed = false;
+        const next: typeof prev = {};
+        for (const [id, value] of Object.entries(prev)) {
+          if (value.expiresAt > now) {
+            next[id] = value;
+          } else {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -44,17 +102,52 @@ export function useMedications() {
   }, []);
 
   useEffect(() => {
+    if (loading || !user) return;
+
+    void ensureDailyMedicineLogs(user.uid, meds, getLocalDateKey());
+  }, [loading, medicineSeedKey, user]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+
+    const todayKey = getLocalDateKey();
+    const unsubscribe = subscribeToMedicineLogDate(user.uid, todayKey, (day) => {
+      const entriesByMedicineId = new Map<string, MedicineLogEntry>();
+      day.entries.forEach((entry) => {
+        entriesByMedicineId.set(entry.medicineId, entry);
+      });
+
+      setMeds((prev) =>
+        prev.map((med) => {
+          const entry = entriesByMedicineId.get(med.id);
+          const nextStatus = toUiStatus(entry?.status);
+          if (med.status === nextStatus) {
+            return med;
+          }
+          return { ...med, status: nextStatus };
+        })
+      );
+
+      void getRecentMedicineLogs(user.uid, 7).then((logs) => {
+        setRecentMedicineLogs(logs);
+      });
+    });
+
+    return unsubscribe;
+  }, [loading, setMeds, user]);
+
+  useEffect(() => {
     if (loading || !notificationsEnabled) return;
 
-    const missingReminders = meds.filter((med) => !notificationMap[med.id]);
+    const missingReminders = meds.filter((med) => getNotificationIds(notificationMap[med.id]).length === 0);
     if (missingReminders.length === 0) return;
 
     (async () => {
       const nextMap = { ...notificationMap };
       for (const med of missingReminders) {
-        const notificationId = await scheduleMedicationReminder(med);
-        if (notificationId) {
-          nextMap[med.id] = notificationId;
+        const notificationIds = await scheduleMedicationReminder(med);
+        if (notificationIds.length > 0) {
+          nextMap[med.id] = notificationIds;
         }
       }
       setNotificationMap(nextMap);
@@ -69,12 +162,13 @@ export function useMedications() {
 
     (async () => {
       for (const id of expiredIds) {
-        const notificationId = notificationMap[id];
-        if (!notificationId) continue;
-        try {
-          await cancelMedicationReminder(notificationId);
-        } catch (error) {
-          console.warn('Failed to cancel expired medication reminder:', error);
+        const notificationIds = getNotificationIds(notificationMap[id]);
+        for (const notificationId of notificationIds) {
+          try {
+            await cancelMedicationReminder(notificationId);
+          } catch (error) {
+            console.warn('Failed to cancel expired medication reminder:', error);
+          }
         }
       }
     })();
@@ -104,43 +198,143 @@ export function useMedications() {
     async (med: Medication) => {
       setMeds((prev) => [...prev, med]);
       if (!notificationsEnabled) return;
-      const notificationId = await scheduleMedicationReminder(med);
-      if (notificationId) {
-        setNotificationMap((prev) => ({ ...prev, [med.id]: notificationId }));
+      const notificationIds = await scheduleMedicationReminder(med);
+      if (notificationIds.length > 0) {
+        setNotificationMap((prev) => ({ ...prev, [med.id]: notificationIds }));
       }
     },
     [notificationsEnabled, setMeds, setNotificationMap]
   );
 
-  const markTaken = useCallback(
-    (id: string) => {
-      setMeds((prev) =>
-        prev.map((med) =>
-          med.id === id
-            ? { ...med, status: 'taken', streak: med.streak + 1 }
-            : med
-        )
-      );
+  const recordMedicationStatus = useCallback(
+    async (id: string, status: MedicineLogStatus) => {
+      const med = meds.find((item) => item.id === id);
+      if (!med || !user) return;
+
+      await appendMedicineLog(user.uid, {
+        medicineId: med.id,
+        medicineName: med.name,
+        scheduledTime: getScheduledTime(med),
+        takenAt: status === 'pending' ? null : new Date().toISOString(),
+        status,
+      });
     },
-    [setMeds]
+    [meds, user]
   );
 
-  const deleteMed = useCallback(
-    async (id: string) => {
-      setMeds((prev) => prev.filter((med) => med.id !== id));
-      const notificationId = notificationMap[id];
-      if (notificationId) {
+  const updateMedication = useCallback(
+    async (updated: Medication) => {
+      setMeds((prev) => prev.map((med) => (med.id === updated.id ? updated : med)));
+
+      const previousNotificationIds = getNotificationIds(notificationMap[updated.id]);
+      for (const notificationId of previousNotificationIds) {
         try {
           await cancelMedicationReminder(notificationId);
         } catch (error) {
           console.warn('Failed to cancel medication reminder:', error);
         }
-        setNotificationMap((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
       }
+
+      if (!notificationsEnabled) return;
+
+      const notificationIds = await scheduleMedicationReminder(updated);
+      setNotificationMap((prev) => ({ ...prev, [updated.id]: notificationIds }));
+    },
+    [notificationMap, notificationsEnabled, setMeds, setNotificationMap]
+  );
+
+  const markTaken = useCallback(
+    async (id: string) => {
+      const med = meds.find((item) => item.id === id);
+      if (med) {
+        setUndoEntries((prev) => ({
+          ...prev,
+          [id]: { previousStreak: med.streak, expiresAt: Date.now() + 10000 },
+        }));
+      }
+
+      setMeds((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, status: 'taken', streak: item.streak + 1 } : item))
+      );
+      await recordMedicationStatus(id, 'taken');
+    },
+    [meds, recordMedicationStatus, setMeds]
+  );
+
+  const markNotTaken = useCallback(
+    async (id: string) => {
+      setMeds((prev) =>
+        prev.map((med) => (med.id === id ? { ...med, status: 'missed' } : med))
+      );
+      await recordMedicationStatus(id, 'not_taken');
+    },
+    [recordMedicationStatus, setMeds]
+  );
+
+  const snoozeMedication = useCallback(
+    async (id: string) => {
+      setMeds((prev) =>
+        prev.map((med) => (med.id === id ? { ...med, status: 'skipped' } : med))
+      );
+      await recordMedicationStatus(id, 'snoozed');
+    },
+    [recordMedicationStatus, setMeds]
+  );
+
+  const canUndoTaken = useCallback(
+    (id: string) => {
+      const entry = undoEntries[id];
+      return Boolean(entry && entry.expiresAt > Date.now());
+    },
+    [undoEntries]
+  );
+
+  const undoTaken = useCallback(
+    async (id: string) => {
+      const undoEntry = undoEntries[id];
+      const med = meds.find((item) => item.id === id);
+      if (!undoEntry || !med || !user || !canUndoTaken(id)) return;
+
+      setMeds((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, status: 'upcoming', streak: undoEntry.previousStreak } : item
+        )
+      );
+
+      await appendMedicineLog(user.uid, {
+        medicineId: med.id,
+        medicineName: med.name,
+        scheduledTime: getScheduledTime(med),
+        takenAt: null,
+        status: 'pending',
+        dateKey: getLocalDateKey(),
+      });
+
+      setUndoEntries((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    },
+    [canUndoTaken, meds, undoEntries, user]
+  );
+
+  const deleteMed = useCallback(
+    async (id: string) => {
+      setMeds((prev) => prev.filter((med) => med.id !== id));
+      const notificationIds = getNotificationIds(notificationMap[id]);
+      for (const notificationId of notificationIds) {
+        try {
+          await cancelMedicationReminder(notificationId);
+        } catch (error) {
+          console.warn('Failed to cancel medication reminder:', error);
+        }
+      }
+      setNotificationMap((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     },
     [notificationMap, setMeds, setNotificationMap]
   );
@@ -148,11 +342,17 @@ export function useMedications() {
   return {
     meds,
     addMedication,
+    updateMedication,
     markTaken,
+    markNotTaken,
+    snoozeMedication,
+    undoTaken,
+    canUndoTaken,
     deleteMed,
     takenCount,
     totalMeds,
     upcomingMeds,
+    recentMedicineLogs,
     loading,
   };
 }

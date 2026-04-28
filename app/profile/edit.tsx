@@ -1,21 +1,28 @@
+import MedicineTimeSlotPicker from '@/components/medicine-time-slot-picker';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { FirestoreMedicine, useMedicines } from '@/hooks/useMedicines';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import {
+    EMERGENCY_CONTACT_SLOTS,
+    createEmergencyContactDrafts,
+    normalizeEmergencyContacts,
+} from '@/lib/emergency-contacts';
+import { FREQUENCY_OPTIONS, formatTimeSlots, getDefaultTimeSlots, normalizeTimeSlots } from '@/lib/medicine';
 import { EmergencyContact, LANGUAGE_OPTIONS, Medicine, PreferredLanguage } from '@/types/user';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'] as const;
@@ -27,36 +34,29 @@ const RELATION_OPTIONS = [
   'Father', 'Mother', 'Friend', 'Neighbour', 'Caretaker', 'Other',
 ];
 
-const FREQUENCY_OPTIONS = [
-  'Once a day', 'Twice a day', 'Three times a day',
-  'Every 8 hours', 'Every 12 hours', 'Weekly', 'As needed',
-];
-
-const TIME_OPTIONS = [
-  'Morning (6–9 AM)', 'Mid-morning (9–12 PM)', 'Afternoon (12–3 PM)',
-  'Evening (3–6 PM)', 'Night (6–9 PM)', 'Bedtime (9 PM+)',
-];
-
 const createId = () => Date.now().toString() + Math.random().toString(36).slice(2);
 
 function toProfileMedicine(med: FirestoreMedicine): Medicine {
+  const times = normalizeTimeSlots(med.times?.length ? med.times : (med.time ? [med.time] : []), med.frequency);
   return {
     id: med.id,
     name: med.name,
     dosage: med.dosage,
     frequency: med.frequency || 'Once a day',
-    time: med.time || med.times?.[0] || undefined,
+    time: times[0],
+    times,
     notes: med.notes,
   };
 }
 
 function toCloudMedicine(med: Medicine): FirestoreMedicine {
-  const trimmedTime = med.time?.trim();
+  const times = normalizeTimeSlots(med.times?.length ? med.times : (med.time ? [med.time] : []), med.frequency);
+  const trimmedTime = times[0];
   return {
     id: med.id,
     name: med.name,
     dosage: med.dosage,
-    times: trimmedTime ? [trimmedTime] : [],
+    times,
     enabled: true,
     frequency: med.frequency,
     time: trimmedTime,
@@ -161,11 +161,11 @@ export default function EditProfileScreen() {
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>('en');
   const [medicines, setMedicines]                 = useState<Medicine[]>([]);
   const [contacts, setContacts]                   = useState<EmergencyContact[]>([]);
+  const [editingMedicineId, setEditingMedicineId] = useState<string | null>(null);
 
-  const [newMedicine, setNewMedicine]   = useState<Medicine>({ id: '', name: '', dosage: '', frequency: '', time: '', notes: '' });
+  const [newMedicine, setNewMedicine]   = useState<Medicine>({ id: '', name: '', dosage: '', frequency: '', time: '', times: [], notes: '' });
+  const [newMedicineTimes, setNewMedicineTimes] = useState<string[]>(getDefaultTimeSlots('Once a day'));
   const [addingMedicine, setAddingMedicine] = useState(false);
-  const [newContact, setNewContact]     = useState<EmergencyContact>({ id: '', name: '', phone: '', relation: '' });
-  const [addingContact, setAddingContact]   = useState(false);
 
   useEffect(() => {
     if (loading || !user || formInitialized || cloudMedicinesLoading) return;
@@ -178,7 +178,7 @@ export default function EditProfileScreen() {
       ? cloudMedicines.map(toProfileMedicine)
       : (profile?.medicines || []);
     setMedicines(initialMedicines);
-    setContacts(profile?.emergencyContacts || []);
+    setContacts(createEmergencyContactDrafts(profile?.emergencyContacts || []));
     setFormInitialized(true);
   }, [cloudMedicines, cloudMedicinesLoading, formInitialized, loading, profile, user]);
 
@@ -189,27 +189,39 @@ export default function EditProfileScreen() {
   if (loading || !user) return null;
 
   const addMedicine = async () => {
-    if (!newMedicine.name.trim() || !newMedicine.dosage.trim() || !newMedicine.frequency.trim()) {
+    if (!newMedicine.name.trim() || !newMedicine.dosage.trim() || !newMedicine.frequency.trim() || newMedicineTimes.length === 0) {
       Alert.alert('Missing medicine info', 'Please fill medicine name, dosage, and frequency.');
       return;
     }
     try {
-      const generatedId = createId();
-      const cloudMedicine = await addCloudMedicine({
-        id: generatedId,
+      const normalizedTimes = normalizeTimeSlots(newMedicineTimes, newMedicine.frequency);
+      const medicineId = editingMedicineId ?? createId();
+      const cloudMedicineInput = {
+        id: medicineId,
         name: newMedicine.name.trim(),
         dosage: newMedicine.dosage.trim(),
-        times: newMedicine.time?.trim() ? [newMedicine.time.trim()] : [],
+        times: normalizedTimes,
         enabled: true,
         frequency: newMedicine.frequency.trim(),
-        time: newMedicine.time?.trim() || undefined,
+        time: normalizedTimes[0],
         notes: newMedicine.notes?.trim() || undefined,
-      });
+      };
 
-      const nextMedicines = [...medicines, toProfileMedicine(cloudMedicine)];
+      if (editingMedicineId) {
+        await updateCloudMedicine(cloudMedicineInput);
+      } else {
+        await addCloudMedicine(cloudMedicineInput);
+      }
+
+      const profileMedicine = toProfileMedicine(cloudMedicineInput);
+      const nextMedicines = editingMedicineId
+        ? medicines.map((medicine) => (medicine.id === medicineId ? profileMedicine : medicine))
+        : [...medicines, profileMedicine];
       setMedicines(nextMedicines);
       await updateMedicines(nextMedicines);
-      setNewMedicine({ id: '', name: '', dosage: '', frequency: '', time: '', notes: '' });
+      setNewMedicine({ id: '', name: '', dosage: '', frequency: '', time: '', times: [], notes: '' });
+      setNewMedicineTimes(getDefaultTimeSlots('Once a day'));
+      setEditingMedicineId(null);
       setAddingMedicine(false);
     } catch (error) {
       console.error('Medicine save failed:', error);
@@ -217,29 +229,69 @@ export default function EditProfileScreen() {
     }
   };
 
+  const openMedicineEditor = (medicine: Medicine) => {
+    setEditingMedicineId(medicine.id);
+    setNewMedicine({
+      id: medicine.id,
+      name: medicine.name,
+      dosage: medicine.dosage,
+      frequency: medicine.frequency,
+      time: medicine.times?.[0] ?? medicine.time ?? '',
+      times: medicine.times ?? [],
+      notes: medicine.notes || '',
+    });
+    setNewMedicineTimes(normalizeTimeSlots(medicine.times ?? (medicine.time ? [medicine.time] : []), medicine.frequency));
+    setAddingMedicine(true);
+  };
+
+  const cancelMedicineEditor = () => {
+    setEditingMedicineId(null);
+    setNewMedicine({ id: '', name: '', dosage: '', frequency: '', time: '', times: [], notes: '' });
+    setNewMedicineTimes(getDefaultTimeSlots('Once a day'));
+    setAddingMedicine(false);
+  };
+
   const handleLanguageSelect = async (lang: PreferredLanguage) => {
     setPreferredLanguage(lang);
     await saveProfile({ preferredLanguage: lang });
   };
 
-  const addContact = () => {
-    if (!newContact.name.trim() || !newContact.phone.trim() || !newContact.relation.trim()) {
-      Alert.alert('Missing contact info', 'Please fill contact name, phone, and relation.');
-      return;
+  const updateContactField = (slot: EmergencyContact['slot'], field: keyof EmergencyContact, value: string) => {
+    setContacts((prev) =>
+      prev.map((contact) =>
+        contact.slot === slot
+          ? {
+              ...contact,
+              [field]: value,
+            }
+          : contact
+      )
+    );
+  };
+
+  const validateContacts = () => {
+    for (const slotConfig of EMERGENCY_CONTACT_SLOTS) {
+      const contact = contacts.find((item) => item.slot === slotConfig.slot);
+      const hasAny = Boolean(contact?.name.trim() || contact?.phone.trim() || contact?.relation.trim());
+      const isComplete = Boolean(contact?.name.trim() && contact?.phone.trim() && contact?.relation.trim());
+
+      if (slotConfig.required || hasAny) {
+        if (!contact || !isComplete) {
+          Alert.alert('Missing contact info', `${slotConfig.label} needs name, phone number, and relation.`);
+          return false;
+        }
+      }
     }
-    setContacts(prev => [...prev, {
-      id: createId(),
-      name: newContact.name.trim(),
-      phone: newContact.phone.trim(),
-      relation: newContact.relation.trim(),
-    }]);
-    setNewContact({ id: '', name: '', phone: '', relation: '' });
-    setAddingContact(false);
+
+    return true;
   };
 
   const saveChanges = async () => {
     if (!displayName.trim()) {
       Alert.alert('Missing name', 'Please enter your name.');
+      return;
+    }
+    if (!validateContacts()) {
       return;
     }
     try {
@@ -275,10 +327,10 @@ export default function EditProfileScreen() {
         allergies: allergies.trim(),
         preferredLanguage,
         medicines,
-        emergencyContacts: contacts,
+        emergencyContacts: normalizeEmergencyContacts(contacts),
       });
       await updateMedicines(medicines);
-      await updateEmergencyContacts(contacts);
+      await updateEmergencyContacts(normalizeEmergencyContacts(contacts));
       router.back();
     } catch (error) {
       console.error('Save changes failed:', error);
@@ -367,14 +419,22 @@ export default function EditProfileScreen() {
           <View key={medicine.id} style={styles.card}>
             <Text style={styles.cardTitle}>{medicine.name}</Text>
             <Text style={styles.cardText}>{medicine.dosage} • {medicine.frequency}</Text>
-            {medicine.time  ? <Text style={styles.cardText}>Time: {medicine.time}</Text>  : null}
+            <Text style={styles.cardText}>Time: {formatTimeSlots(medicine.times ?? [medicine.time || '9:00 AM'])}</Text>
             {medicine.notes ? <Text style={styles.cardText}>Notes: {medicine.notes}</Text> : null}
-            <TouchableOpacity
-              onPress={() => setMedicines(prev => prev.filter(m => m.id !== medicine.id))}
-              style={styles.deleteButton}
-            >
-              <Text style={styles.deleteText}>Delete</Text>
-            </TouchableOpacity>
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                onPress={() => openMedicineEditor(medicine)}
+                style={styles.editButton}
+              >
+                <Text style={styles.editText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMedicines(prev => prev.filter(m => m.id !== medicine.id))}
+                style={styles.deleteButton}
+              >
+                <Text style={styles.deleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ))}
 
@@ -400,15 +460,18 @@ export default function EditProfileScreen() {
               label="Frequency"
               value={newMedicine.frequency}
               options={FREQUENCY_OPTIONS}
-              onSelect={v => setNewMedicine(p => ({ ...p, frequency: v }))}
+              onSelect={(v) => {
+                setNewMedicine((p) => ({ ...p, frequency: v }));
+                if (newMedicineTimes.length === 0) {
+                  setNewMedicineTimes(getDefaultTimeSlots(v));
+                }
+              }}
               placeholder="How often?"
             />
-            <Dropdown
-              label="Time"
-              value={newMedicine.time || ''}
-              options={TIME_OPTIONS}
-              onSelect={v => setNewMedicine(p => ({ ...p, time: v }))}
-              placeholder="When to take?"
+            <MedicineTimeSlotPicker
+              frequency={newMedicine.frequency}
+              selectedTimes={newMedicineTimes}
+              onChange={setNewMedicineTimes}
             />
             <Text style={styles.label}>Notes (optional)</Text>
             <TextInput
@@ -420,9 +483,14 @@ export default function EditProfileScreen() {
               multiline
               textAlignVertical="top"
             />
-            <TouchableOpacity style={styles.button} onPress={addMedicine}>
-              <Text style={styles.buttonText}>Save Medicine</Text>
-            </TouchableOpacity>
+            <View style={styles.formActions}>
+              <TouchableOpacity style={styles.button} onPress={addMedicine}>
+                <Text style={styles.buttonText}>{editingMedicineId ? 'Update Medicine' : 'Save Medicine'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryButton} onPress={cancelMedicineEditor}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddingMedicine(true)}>
@@ -432,54 +500,61 @@ export default function EditProfileScreen() {
 
         {/* ── Emergency Contacts ────────────────────────────────────────── */}
         <Text style={styles.sectionTitle}>Emergency Contacts</Text>
-        {contacts.map(contact => (
-          <View key={contact.id} style={styles.card}>
-            <Text style={styles.cardTitle}>{contact.name}</Text>
-            <Text style={styles.cardText}>{contact.relation} • {contact.phone}</Text>
-            <TouchableOpacity
-              onPress={() => setContacts(prev => prev.filter(c => c.id !== contact.id))}
-              style={styles.deleteButton}
-            >
-              <Text style={styles.deleteText}>Delete</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+        <Text style={styles.hint}>Primary caregiver is used first. Doctor is required for reports and follow-up.</Text>
+        {contacts.map((contact) => {
+          const slotConfig = EMERGENCY_CONTACT_SLOTS.find((item) => item.slot === contact.slot) ?? EMERGENCY_CONTACT_SLOTS[0];
 
-        {addingContact ? (
-          <View style={styles.inlineForm}>
-            <Text style={styles.label}>Contact Name</Text>
-            <TextInput
-              style={styles.input}
-              value={newContact.name}
-              onChangeText={v => setNewContact(p => ({ ...p, name: v }))}
-              placeholder="Full name"
-              placeholderTextColor={Colors.textMuted}
-            />
-            <Text style={styles.label}>Phone Number</Text>
-            <TextInput
-              style={styles.input}
-              value={newContact.phone}
-              onChangeText={v => setNewContact(p => ({ ...p, phone: v }))}
-              placeholder="+91 XXXXX XXXXX"
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="phone-pad"
-            />
-            <Dropdown
-              label="Relation"
-              value={newContact.relation}
-              options={RELATION_OPTIONS}
-              onSelect={v => setNewContact(p => ({ ...p, relation: v }))}
-              placeholder="Select relation"
-            />
-            <TouchableOpacity style={styles.button} onPress={addContact}>
-              <Text style={styles.buttonText}>Save Contact</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddingContact(true)}>
-            <Text style={styles.secondaryButtonText}>+ Add Contact</Text>
-          </TouchableOpacity>
-        )}
+          return (
+            <View key={contact.slot} style={styles.card}>
+              <View style={styles.contactHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{slotConfig.label}</Text>
+                  <Text style={styles.cardText}>{slotConfig.description}</Text>
+                </View>
+                {slotConfig.isPrimary ? (
+                  <View style={styles.primaryBadge}>
+                    <Text style={styles.primaryBadgeText}>Primary</Text>
+                  </View>
+                ) : slotConfig.required ? (
+                  <View style={styles.requiredBadge}>
+                    <Text style={styles.requiredBadgeText}>Required</Text>
+                  </View>
+                ) : (
+                  <View style={styles.optionalBadge}>
+                    <Text style={styles.optionalBadgeText}>Optional</Text>
+                  </View>
+                )}
+              </View>
+
+              <Text style={styles.label}>Name</Text>
+              <TextInput
+                style={styles.input}
+                value={contact.name}
+                onChangeText={(value) => updateContactField(contact.slot, 'name', value)}
+                placeholder={slotConfig.label}
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={styles.label}>Phone Number</Text>
+              <TextInput
+                style={styles.input}
+                value={contact.phone}
+                onChangeText={(value) => updateContactField(contact.slot, 'phone', value)}
+                placeholder="+91 XXXXX XXXXX"
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="phone-pad"
+              />
+
+              <Dropdown
+                label="Relation with user"
+                value={contact.relation}
+                options={RELATION_OPTIONS}
+                onSelect={(value) => updateContactField(contact.slot, 'relation', value)}
+                placeholder="Select relation"
+              />
+            </View>
+          );
+        })}
 
         {/* ── Save ─────────────────────────────────────────────────────── */}
         <TouchableOpacity style={[styles.button, { marginTop: Spacing.xl }]} onPress={saveChanges}>
@@ -531,9 +606,20 @@ const styles = StyleSheet.create({
   },
   cardTitle:    { color: Colors.textPrimary, fontSize: FontSizes.md, fontWeight: FontWeights.bold },
   cardText:     { color: Colors.textSecondary, fontSize: FontSizes.sm, marginTop: 2 },
+  cardActions: { flexDirection: 'row', alignItems: 'center' },
+  contactHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginBottom: Spacing.sm },
+  primaryBadge: { backgroundColor: Colors.primary + '18', borderRadius: Radii.full, paddingHorizontal: Spacing.sm, paddingVertical: 4 },
+  primaryBadgeText: { color: Colors.primary, fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
+  requiredBadge: { backgroundColor: Colors.emergency + '18', borderRadius: Radii.full, paddingHorizontal: Spacing.sm, paddingVertical: 4 },
+  requiredBadgeText: { color: Colors.emergency, fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
+  optionalBadge: { backgroundColor: Colors.border, borderRadius: Radii.full, paddingHorizontal: Spacing.sm, paddingVertical: 4 },
+  optionalBadgeText: { color: Colors.textSecondary, fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
   deleteButton: { marginTop: Spacing.sm },
   deleteText:   { color: Colors.emergency, fontWeight: FontWeights.semibold },
+  editButton: { marginTop: Spacing.sm, marginRight: Spacing.md },
+  editText: { color: Colors.primary, fontWeight: FontWeights.semibold },
   inlineForm:   { marginTop: Spacing.sm },
+  formActions: { marginTop: Spacing.sm },
   button: {
     backgroundColor: Colors.primary, borderRadius: Radii.xl,
     paddingVertical: Spacing.md, alignItems: 'center',

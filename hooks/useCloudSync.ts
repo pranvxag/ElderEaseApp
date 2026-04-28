@@ -1,7 +1,9 @@
 import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { db, hasFirebaseConfig } from '@/lib/firebase';
+import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
+import { cleanForFirestore, db, hasFirebaseConfig } from '@/lib/firebase';
+import { normalizeTimeSlots, slotToReminderTime } from '@/lib/medicine';
 import { Medicine, UserProfile } from '@/types/user';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -20,7 +22,8 @@ function toTrackerMeds(medicines: Medicine[]): TrackerMedication[] {
     id: med.id,
     name: med.name,
     dosage: med.dosage,
-    time: med.time || '9:00 AM',
+    time: slotToReminderTime(med.times?.[0] ?? med.time ?? '9:00 AM'),
+    times: normalizeTimeSlots(med.times?.length ? med.times : (med.time ? [med.time] : []), med.frequency),
     frequency: toTrackerFrequency(med.frequency),
     color: '#4ECDC4',
     status: 'upcoming',
@@ -53,6 +56,7 @@ function mergeTrackerMeds(local: TrackerMedication[], cloud: TrackerMedication[]
         name: cloudMed.name,
         dosage: cloudMed.dosage,
         time: cloudMed.time,
+        times: cloudMed.times,
         frequency: cloudMed.frequency,
         purpose: cloudMed.purpose,
         instructions: cloudMed.instructions,
@@ -71,7 +75,7 @@ export function useCloudSync() {
   const uid = user?.uid ?? 'anonymous';
   const { profile, saveProfile, loading: profileLoading } = useUserProfile();
 
-  const [localMedications, setMedications, medsLoading] = useStoredState<TrackerMedication[]>(
+  const [, setMedications, medsLoading] = useStoredState<TrackerMedication[]>(
     STORAGE_KEYS.MEDICINES(uid),
     []
   );
@@ -129,8 +133,9 @@ export function useCloudSync() {
 
         if (!snapshot.exists()) {
           if (payload) {
-            await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true });
-            lastSyncedFingerprintRef.current = JSON.stringify(payload);
+            const cleanPayload = cleanForFirestore(payload);
+            await setDoc(ref, { ...cleanPayload, updatedAt: serverTimestamp() }, { merge: true });
+            lastSyncedFingerprintRef.current = JSON.stringify(cleanPayload);
           }
           hydratedUidRef.current = user.uid;
           setCloudError(null);
@@ -142,7 +147,7 @@ export function useCloudSync() {
         await saveProfileRef.current(cloud);
         const cloudMeds = toTrackerMeds(cloud.medicines ?? []);
         setMedicationsRef.current((prev) => mergeTrackerMeds(prev, cloudMeds));
-        setContactsRef.current(cloud.emergencyContacts ?? []);
+        setContactsRef.current(normalizeEmergencyContacts(cloud.emergencyContacts ?? []));
         setOnboardedRef.current(Boolean(cloud.uid));
 
         const normalized = {
@@ -167,7 +172,6 @@ export function useCloudSync() {
   }, [
     cloudEnabled,
     loading,
-    localMedications,
     user,
   ]);
 
@@ -182,7 +186,8 @@ export function useCloudSync() {
     lastSyncedFingerprintRef.current = fingerprint;
 
     const ref = doc(db, 'users', user.uid, 'profile', 'data');
-    setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true }).catch(
+    const cleanPayload = cleanForFirestore(payload as any ?? {});
+    setDoc(ref, { ...cleanPayload, updatedAt: serverTimestamp() }, { merge: true }).catch(
       (error) => {
         console.error('Cloud sync failed:', error);
         setCloudEnabled(false);
