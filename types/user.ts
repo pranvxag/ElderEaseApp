@@ -12,6 +12,9 @@ export type Medicine = {
   frequency: string;
   time?: string;
   notes?: string;
+  createdAt?: string;
+  durationDays?: number;
+  expiresAt?: string;
 };
 
 export type PreferredLanguage = 'en' | 'hi' | 'mr';

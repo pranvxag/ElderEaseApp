@@ -27,7 +27,43 @@ function toTrackerMeds(medicines: Medicine[]): TrackerMedication[] {
     purpose: med.notes || 'As prescribed',
     streak: 0,
     instructions: med.notes,
+    createdAt: med.createdAt,
+    durationDays: med.durationDays,
+    expiresAt: med.expiresAt,
   }));
+}
+
+function mergeTrackerMeds(local: TrackerMedication[], cloud: TrackerMedication[]): TrackerMedication[] {
+  if (cloud.length === 0) return local;
+
+  const localById = new Map(local.map((med) => [med.id, med]));
+  const merged: TrackerMedication[] = [...local];
+
+  for (const cloudMed of cloud) {
+    const existing = localById.get(cloudMed.id);
+    if (!existing) {
+      merged.push(cloudMed);
+      continue;
+    }
+
+    const index = merged.findIndex((item) => item.id === cloudMed.id);
+    if (index >= 0) {
+      merged[index] = {
+        ...existing,
+        name: cloudMed.name,
+        dosage: cloudMed.dosage,
+        time: cloudMed.time,
+        frequency: cloudMed.frequency,
+        purpose: cloudMed.purpose,
+        instructions: cloudMed.instructions,
+        createdAt: cloudMed.createdAt ?? existing.createdAt,
+        durationDays: cloudMed.durationDays ?? existing.durationDays,
+        expiresAt: cloudMed.expiresAt ?? existing.expiresAt,
+      };
+    }
+  }
+
+  return merged;
 }
 
 export function useCloudSync() {
@@ -35,7 +71,7 @@ export function useCloudSync() {
   const uid = user?.uid ?? 'anonymous';
   const { profile, saveProfile, loading: profileLoading } = useUserProfile();
 
-  const [, setMedications, medsLoading] = useStoredState<TrackerMedication[]>(
+  const [localMedications, setMedications, medsLoading] = useStoredState<TrackerMedication[]>(
     STORAGE_KEYS.MEDICINES(uid),
     []
   );
@@ -104,7 +140,8 @@ export function useCloudSync() {
 
         const cloud = snapshot.data() as UserProfile;
         await saveProfileRef.current(cloud);
-        setMedicationsRef.current(toTrackerMeds(cloud.medicines ?? []));
+        const cloudMeds = toTrackerMeds(cloud.medicines ?? []);
+        setMedicationsRef.current((prev) => mergeTrackerMeds(prev, cloudMeds));
         setContactsRef.current(cloud.emergencyContacts ?? []);
         setOnboardedRef.current(Boolean(cloud.uid));
 
@@ -130,6 +167,7 @@ export function useCloudSync() {
   }, [
     cloudEnabled,
     loading,
+    localMedications,
     user,
   ]);
 

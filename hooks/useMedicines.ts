@@ -20,6 +20,9 @@ export type FirestoreMedicine = {
   frequency?: string;
   time?: string;
   notes?: string;
+  createdAt?: string;
+  durationDays?: number;
+  expiresAt?: string;
 };
 
 export type NewMedicineInput = {
@@ -31,6 +34,9 @@ export type NewMedicineInput = {
   frequency?: string;
   time?: string;
   notes?: string;
+  createdAt?: string;
+  durationDays?: number;
+  expiresAt?: string;
 };
 
 function profileDocRef(uid: string) {
@@ -47,6 +53,9 @@ export async function addMedicine(uid: string, medicine: NewMedicineInput): Prom
     frequency: medicine.frequency,
     time: medicine.time,
     notes: medicine.notes,
+    createdAt: medicine.createdAt,
+    durationDays: medicine.durationDays,
+    expiresAt: medicine.expiresAt,
   };
 
   await updateDoc(profileDocRef(uid), {

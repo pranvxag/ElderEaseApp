@@ -14,6 +14,9 @@ export interface Medication {
   purpose: string; // "For blood pressure"
   streak: number; // days taken in a row
   instructions?: string;
+  createdAt?: string;
+  durationDays?: number;
+  expiresAt?: string;
 }
 
 export interface UserProfile {

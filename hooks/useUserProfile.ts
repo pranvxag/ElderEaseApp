@@ -56,6 +56,9 @@ function toTrackerMeds(medicines: Medicine[]): TrackerMedication[] {
     purpose: med.notes || 'As prescribed',
     streak: 0,
     instructions: med.notes,
+    createdAt: med.createdAt,
+    durationDays: med.durationDays,
+    expiresAt: med.expiresAt,
   }));
 }
 

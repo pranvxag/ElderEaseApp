@@ -8,6 +8,13 @@ import {
 import { useAuth } from './useAuth';
 import { STORAGE_KEYS, useStoredState } from './useStorage';
 
+function isExpiredMedication(expiresAt?: string): boolean {
+  if (!expiresAt) return false;
+  const expiry = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiry)) return false;
+  return Date.now() > expiry;
+}
+
 export function useMedications() {
   const { user } = useAuth();
   const uid = user?.uid ?? 'anonymous';
@@ -53,6 +60,34 @@ export function useMedications() {
       setNotificationMap(nextMap);
     })();
   }, [loading, notificationsEnabled, meds, notificationMap, setNotificationMap]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const expiredIds = meds.filter((med) => isExpiredMedication(med.expiresAt)).map((med) => med.id);
+    if (expiredIds.length === 0) return;
+
+    (async () => {
+      for (const id of expiredIds) {
+        const notificationId = notificationMap[id];
+        if (!notificationId) continue;
+        try {
+          await cancelMedicationReminder(notificationId);
+        } catch (error) {
+          console.warn('Failed to cancel expired medication reminder:', error);
+        }
+      }
+    })();
+
+    setMeds((prev) => prev.filter((med) => !expiredIds.includes(med.id)));
+    setNotificationMap((prev) => {
+      const next = { ...prev };
+      for (const id of expiredIds) {
+        delete next[id];
+      }
+      return next;
+    });
+  }, [loading, meds, notificationMap, setMeds, setNotificationMap]);
 
   const takenCount = useMemo(
     () => meds.filter((m) => m.status === 'taken').length,

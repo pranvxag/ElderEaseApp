@@ -228,7 +228,11 @@ function MedCard({
 
 export default function MedicationsScreen() {
   const { meds, addMedication, markTaken, deleteMed, loading } = useMedications();
-  const { addMedicine: addProfileMedicine, loading: profileMedicinesLoading } = useMedicines();
+  const {
+    addMedicine: addProfileMedicine,
+    removeMedicine: removeProfileMedicine,
+    loading: profileMedicinesLoading,
+  } = useMedicines();
   const { profile, saveProfile, loading: profileLoading } = useUserProfile();
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<MedStatus | 'all'>('all');
@@ -239,6 +243,7 @@ export default function MedicationsScreen() {
   const [newFrequency, setNewFrequency] = useState('');
   const [newTimeLabel, setNewTimeLabel] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [newDurationDays, setNewDurationDays] = useState('');
   const [selectedColor, setSelectedColor] = useState(PILL_COLORS[0]);
 
   const swipeDownResponder = React.useMemo(
@@ -269,8 +274,18 @@ export default function MedicationsScreen() {
     markTaken(id);
   }
 
-  function handleDelete(id: string) {
-    deleteMed(id);
+  async function handleDelete(id: string) {
+    try {
+      const nextProfileMedicines = (profile?.medicines ?? []).filter((medicine) => medicine.id !== id);
+      await Promise.all([
+        deleteMed(id),
+        removeProfileMedicine(id),
+        saveProfile({ medicines: nextProfileMedicines }),
+      ]);
+    } catch (error) {
+      console.error('Delete medicine failed:', error);
+      Alert.alert('Delete failed', 'Could not remove medicine right now. Please try again.');
+    }
   }
 
   function toReminderTime(label: string): string {
@@ -279,6 +294,13 @@ export default function MedicationsScreen() {
 
   function toTrackerFrequency(label: string): Medication['frequency'] {
     return FREQUENCY_TO_TRACKER[label] || 'daily';
+  }
+
+  function parseDurationDays(value: string): number | undefined {
+    if (!value.trim()) return undefined;
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+    return parsed;
   }
 
   async function handleAddMed() {
@@ -292,7 +314,12 @@ export default function MedicationsScreen() {
     const frequencyLabel = newFrequency.trim();
     const timeLabel = newTimeLabel.trim();
     const notes = newNotes.trim();
+    const durationDays = parseDurationDays(newDurationDays);
     const reminderTime = toReminderTime(timeLabel);
+    const createdAt = new Date().toISOString();
+    const expiresAt = durationDays
+      ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString()
+      : undefined;
 
     const profileMedicine: Medicine = {
       id: Date.now().toString(),
@@ -301,6 +328,9 @@ export default function MedicationsScreen() {
       frequency: frequencyLabel,
       time: timeLabel,
       notes: notes || undefined,
+      createdAt,
+      durationDays,
+      expiresAt,
     };
 
     const newMed: Medication = {
@@ -314,6 +344,9 @@ export default function MedicationsScreen() {
       purpose: notes || 'As prescribed',
       streak: 0,
       instructions: notes || undefined,
+      createdAt,
+      durationDays,
+      expiresAt,
     };
 
     try {
@@ -329,6 +362,9 @@ export default function MedicationsScreen() {
           frequency: frequencyLabel,
           time: reminderTime,
           notes: notes || undefined,
+          createdAt,
+          durationDays,
+          expiresAt,
         }),
       ]);
       await addMedication(newMed);
@@ -338,6 +374,7 @@ export default function MedicationsScreen() {
       setNewFrequency('');
       setNewTimeLabel('');
       setNewNotes('');
+      setNewDurationDays('');
       setSelectedColor(PILL_COLORS[0]);
       setShowModal(false);
     } catch (error) {
@@ -470,6 +507,19 @@ export default function MedicationsScreen() {
               onChangeText={setNewNotes}
               placeholderTextColor={Colors.textMuted}
             />
+
+            <Text style={styles.fieldLabel}>For How Many Days (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. 7"
+              value={newDurationDays}
+              onChangeText={setNewDurationDays}
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="number-pad"
+            />
+            <Text style={styles.helperText}>
+              Leave empty to keep this medicine until you delete it.
+            </Text>
 
             <Text style={styles.fieldLabel}>Pill Color</Text>
             <View style={styles.colorRow}>
@@ -756,6 +806,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
+  },
+  helperText: {
+    marginTop: 6,
+    fontSize: FontSizes.xs,
+    color: Colors.textMuted,
   },
   colorRow: {
     flexDirection: 'row',
