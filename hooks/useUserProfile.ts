@@ -1,16 +1,13 @@
 import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, storageSet, useStoredState } from '@/hooks/useStorage';
-import { createEmergencyContactDrafts, normalizeEmergencyContacts } from '@/lib/emergency-contacts';
-import { cleanForFirestore, db, hasFirebaseConfig } from '@/lib/firebase';
+import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
+import { cleanForFirestore, hasFirebaseConfig } from '@/lib/firebase';
 import { normalizeTimeSlots, slotToReminderTime } from '@/lib/medicine';
+import { profileDocRef } from '@/lib/profile-data';
 import { EmergencyContact, Medicine, UserProfile } from '@/types/user';
-import { arrayRemove, arrayUnion, doc, setDoc } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, setDoc } from 'firebase/firestore';
 import { useCallback } from 'react';
 import { Medication as TrackerMedication } from '../constants/data';
-
-function profileDocRef(uid: string) {
-  return doc(db, 'users', uid, 'profile', 'data');
-}
 
 function makeDefaultProfile(uid: string, email = '', displayName = '', photoURL?: string | null): UserProfile {
   const now = new Date().toISOString();
@@ -18,12 +15,14 @@ function makeDefaultProfile(uid: string, email = '', displayName = '', photoURL?
     uid,
     email,
     displayName,
+    phoneNumber: '',
+    phoneVerified: false,
     photoURL: photoURL ?? undefined,
     age: '',
     bloodGroup: '',
     allergies: '',
     preferredLanguage: 'en',
-    emergencyContacts: createEmergencyContactDrafts().filter((contact) => Boolean(contact.name.trim() || contact.phone.trim() || contact.relation.trim())),
+    emergencyContacts: [],
     medicines: [],
     createdAt: now,
     updatedAt: now,
@@ -84,6 +83,8 @@ export function useUserProfile() {
         ...data,
         uid: user.uid,
         email: base.email || user.email || '',
+        phoneNumber: data.phoneNumber ?? base.phoneNumber ?? '',
+        phoneVerified: data.phoneVerified ?? base.phoneVerified ?? false,
         displayName:
           data.displayName ?? base.displayName ?? user.displayName ?? user.email?.split('@')[0] ?? 'User',
         photoURL: data.photoURL ?? base.photoURL ?? user.photoURL ?? undefined,

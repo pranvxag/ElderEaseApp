@@ -1,16 +1,13 @@
-import { auth, db, hasFirebaseConfig } from '@/lib/firebase';
-import Constants from 'expo-constants';
-import * as Notifications from 'expo-notifications';
+import { auth, hasFirebaseConfig } from '@/lib/firebase';
 import {
-    signOut as firebaseSignOut,
-    GoogleAuthProvider,
-    onAuthStateChanged,
-    signInWithCredential,
-    signInWithPopup,
-    User,
+  signOut as firebaseSignOut,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithCredential,
+  signInWithPopup,
+  User,
 } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
 type AuthContextValue = {
@@ -53,60 +50,19 @@ if (Platform.OS === 'android') {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const pushTokenSavedRef = useRef<string | null>(null);
 
   const hasGoogleClientId =
     Platform.OS === 'ios' ? Boolean(googleIosClientId || googleWebClientId) : Boolean(googleWebClientId);
 
   const configured = hasFirebaseConfig && hasGoogleClientId && (Platform.OS !== 'android' || nativeGoogleSigninAvailable);
 
-  const registerPushToken = useCallback(async (uid: string) => {
-    if (!hasFirebaseConfig || Platform.OS === 'web') return;
-
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') return;
-
-      const projectId =
-        Constants.expoConfig?.extra?.eas?.projectId ??
-        (Constants as any).easConfig?.projectId ??
-        (Constants as any).expoConfig?.extra?.eas?.projectId;
-
-      const tokenResponse = projectId
-        ? await Notifications.getExpoPushTokenAsync({ projectId })
-        : await Notifications.getExpoPushTokenAsync();
-
-      const expoPushToken = tokenResponse.data;
-      if (!expoPushToken || pushTokenSavedRef.current === expoPushToken) return;
-
-      pushTokenSavedRef.current = expoPushToken;
-
-      const ref = doc(db, 'users', uid, 'profile', 'data');
-      await setDoc(ref, { expoPushToken }, { merge: true });
-    } catch (error) {
-      console.warn('Failed to register Expo push token:', error);
-    }
-  }, []);
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
       setLoading(false);
-      if (nextUser) {
-        registerPushToken(nextUser.uid);
-      } else {
-        pushTokenSavedRef.current = null;
-      }
     });
     return unsubscribe;
-  }, [registerPushToken]);
+  }, []);
 
   const signInWithGoogle = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
     if (!hasFirebaseConfig) {

@@ -2,10 +2,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
-import { cleanForFirestore, db, hasFirebaseConfig } from '@/lib/firebase';
+import { hasFirebaseConfig } from '@/lib/firebase';
 import { normalizeTimeSlots, slotToReminderTime } from '@/lib/medicine';
+import { profileDocRef, toFirestoreProfileData } from '@/lib/profile-data';
 import { Medicine, UserProfile } from '@/types/user';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { getDoc, setDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Medication as TrackerMedication } from '../constants/data';
 
@@ -126,15 +127,15 @@ export function useCloudSync() {
 
     (async () => {
       try {
-        const ref = doc(db, 'users', user.uid, 'profile', 'data');
+        const ref = profileDocRef(user.uid);
         const snapshot = await getDoc(ref);
 
         if (cancelled) return;
 
         if (!snapshot.exists()) {
           if (payload) {
-            const cleanPayload = cleanForFirestore(payload);
-            await setDoc(ref, { ...cleanPayload, updatedAt: serverTimestamp() }, { merge: true });
+            const cleanPayload = toFirestoreProfileData(payload);
+            await setDoc(ref, { ...cleanPayload, updatedAt: new Date().toISOString() }, { merge: true });
             lastSyncedFingerprintRef.current = JSON.stringify(cleanPayload);
           }
           hydratedUidRef.current = user.uid;
@@ -185,9 +186,9 @@ export function useCloudSync() {
 
     lastSyncedFingerprintRef.current = fingerprint;
 
-    const ref = doc(db, 'users', user.uid, 'profile', 'data');
-    const cleanPayload = cleanForFirestore(payload as any ?? {});
-    setDoc(ref, { ...cleanPayload, updatedAt: serverTimestamp() }, { merge: true }).catch(
+    const ref = profileDocRef(user.uid);
+    const cleanPayload = toFirestoreProfileData((payload as any) ?? {});
+    setDoc(ref, { ...cleanPayload, updatedAt: new Date().toISOString() }, { merge: true }).catch(
       (error) => {
         console.error('Cloud sync failed:', error);
         setCloudEnabled(false);

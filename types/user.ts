@@ -52,6 +52,8 @@ export type UserProfile = {
   uid: string;
   displayName: string;
   email: string;
+  phoneNumber: string;
+  phoneVerified: boolean;
   photoURL?: string;
   age?: string;
   bloodGroup?: string;

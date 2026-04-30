@@ -355,6 +355,25 @@ export default function EditProfileScreen() {
           placeholderTextColor={Colors.textMuted}
         />
 
+        <Text style={styles.label}>Phone Number</Text>
+        <View style={styles.phoneRow}>
+          <TextInput
+            style={[styles.input, styles.phoneValue]}
+            value={profile?.phoneNumber || 'Not added'}
+            editable={false}
+            pointerEvents="none"
+            placeholder="Not added"
+            placeholderTextColor={Colors.textMuted}
+          />
+          <TouchableOpacity
+            style={styles.phoneEditButton}
+            onPress={() => router.push({ pathname: '/add-phone', params: { phoneNumber: profile?.phoneNumber || '', edit: '1' } })}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.phoneEditText}>{profile?.phoneNumber ? 'Edit' : 'Add'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <Dropdown
           label="Age"
           value={age}
@@ -585,6 +604,18 @@ const styles = StyleSheet.create({
     padding: Spacing.md, marginBottom: Spacing.md,
     color: Colors.textPrimary, fontSize: FontSizes.md,
   },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  phoneValue: { flex: 1, marginBottom: 0 },
+  phoneEditButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.strong,
+  },
+  phoneEditText: { color: Colors.textOnPrimary, fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
   multiline: { minHeight: 90 },
   chipWrap:  { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
   chip: {

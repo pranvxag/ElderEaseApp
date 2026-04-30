@@ -1,54 +1,94 @@
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { useCloudSync } from '@/hooks/useCloudSync';
-import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { ensureProfileData } from '@/lib/profile-data';
+import { Stack, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 function RootLayoutContent() {
   const router = useRouter();
   const segments = useSegments();
+  const params = useLocalSearchParams<{ edit?: string; phoneNumber?: string }>();
   const { user, loading: authLoading } = useAuth();
-  const scopedUid = user?.uid ?? 'anonymous';
-  const [onboarded, , loading] = useStoredState<boolean>(STORAGE_KEYS.ONBOARDED(scopedUid), false);
+  const [, setProfileStatus] = useState<{ loading: boolean; needsPhone: boolean; phoneNumber: string }>({
+    loading: true,
+    needsPhone: false,
+    phoneNumber: '',
+  });
   useCloudSync();
 
   useEffect(() => {
-    if (authLoading || loading) return;
-
     const topSegment = segments[0];
     const inAuth = topSegment === 'auth';
-    const inOnboarding = topSegment === 'onboarding';
+    const inAddPhone = topSegment === 'add-phone';
+    const inOtp = topSegment === 'otp-verification';
+    const isEditFlow = params.edit === '1';
 
-    // Defer navigation so Expo Router's segment state is fully settled
-    // and to avoid setState during render warnings
-    const timeout = setTimeout(() => {
-      if (!user && !inAuth) {
+    if (authLoading) {
+      setProfileStatus({ loading: true, needsPhone: false, phoneNumber: '' });
+      return;
+    }
+
+    if (!user) {
+      setProfileStatus({ loading: false, needsPhone: false, phoneNumber: '' });
+      if (!inAuth) {
         router.replace('/auth');
-        return;
       }
+      return;
+    }
 
-      if (user && !onboarded && !inOnboarding) {
-        router.replace('/onboarding');
-        return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const profile = await ensureProfileData(user);
+        if (cancelled) return;
+
+        const needsPhone = !profile.phoneNumber.trim() || !profile.phoneVerified;
+        setProfileStatus({
+          loading: false,
+          needsPhone,
+          phoneNumber: profile.phoneNumber || '',
+        });
+
+        // If in add-phone or otp-verification, allow the flow regardless of needsPhone status
+        // This allows editing of phone number without immediate redirect
+        if (inAddPhone || inOtp) {
+          return;
+        }
+
+        if (needsPhone) {
+          router.replace({
+            pathname: '/add-phone',
+            params: { phoneNumber: profile.phoneNumber || '', edit: '0' },
+          });
+          return;
+        }
+
+        if (inAuth) {
+          router.replace('/(tabs)');
+        }
+      } catch (error) {
+        console.error('Profile bootstrap failed:', error);
+        if (!cancelled) {
+          setProfileStatus({ loading: false, needsPhone: false, phoneNumber: '' });
+        }
       }
+    })();
 
-      if (user && onboarded && (inAuth || inOnboarding)) {
-        router.replace('/(tabs)');
-      }
-    }, 0);
+    return () => {
+      cancelled = true;
+    };
 
-    return () => clearTimeout(timeout);
-
-  }, [authLoading, loading, onboarded, segments, user]);
-  // ✅ router removed from deps — stable ref, caused extra re-runs
+  }, [authLoading, router, segments, user]);
 
   return (
     <>
       <StatusBar style="light" />
       <Stack>
         <Stack.Screen name="auth" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="add-phone" options={{ headerShown: false }} />
+        <Stack.Screen name="otp-verification" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="profile/edit" options={{ title: 'Edit Profile', headerShown: true }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

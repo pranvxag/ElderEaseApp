@@ -1,13 +1,10 @@
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase';
 import {
-    arrayRemove,
-    arrayUnion,
     doc,
     getDoc,
     onSnapshot,
-    runTransaction,
-    updateDoc,
+    setDoc
 } from 'firebase/firestore';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -63,9 +60,10 @@ export async function addMedicine(uid: string, medicine: NewMedicineInput): Prom
     Object.entries(newMedicine).filter(([, value]) => value !== undefined)
   ) as FirestoreMedicine;
 
-  await updateDoc(profileDocRef(uid), {
-    medicines: arrayUnion(cleanMedicine),
-  });
+  const ref = profileDocRef(uid);
+  const snapshot = await getDoc(ref);
+  const currentMedicines = snapshot.exists() ? ((snapshot.data() as { medicines?: FirestoreMedicine[] }).medicines ?? []) : [];
+  await setDoc(ref, { medicines: [...currentMedicines, cleanMedicine] }, { merge: true });
 
   return newMedicine;
 }
@@ -79,9 +77,7 @@ export async function removeMedicine(uid: string, medicineId: string): Promise<v
   const existing = (data.medicines ?? []).find((item) => item.id === medicineId);
   if (!existing) return;
 
-  await updateDoc(ref, {
-    medicines: arrayRemove(existing),
-  });
+  await setDoc(ref, { medicines: (data.medicines ?? []).filter((item) => item.id !== medicineId) }, { merge: true });
 }
 
 export async function updateMedicine(uid: string, updatedMedicine: FirestoreMedicine): Promise<void> {
@@ -92,26 +88,19 @@ export async function updateMedicine(uid: string, updatedMedicine: FirestoreMedi
     Object.entries(updatedMedicine).filter(([, value]) => value !== undefined)
   ) as FirestoreMedicine;
 
-  await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(ref);
-    if (!snapshot.exists()) {
-      throw new Error('Profile document does not exist.');
-    }
+  const snapshot = await getDoc(ref);
+  if (!snapshot.exists()) {
+    throw new Error('Profile document does not exist.');
+  }
 
-    const data = snapshot.data() as { medicines?: FirestoreMedicine[] };
-    const existing = (data.medicines ?? []).find((item) => item.id === updatedMedicine.id);
-    if (!existing) {
-      throw new Error('Medicine to update not found.');
-    }
+  const data = snapshot.data() as { medicines?: FirestoreMedicine[] };
+  const existing = (data.medicines ?? []).find((item) => item.id === updatedMedicine.id);
+  if (!existing) {
+    throw new Error('Medicine to update not found.');
+  }
 
-    transaction.update(ref, {
-      medicines: arrayRemove(existing),
-    });
-
-    transaction.update(ref, {
-      medicines: arrayUnion(cleanMedicine),
-    });
-  });
+  const nextMedicines = (data.medicines ?? []).map((item) => (item.id === updatedMedicine.id ? cleanMedicine : item));
+  await setDoc(ref, { medicines: nextMedicines }, { merge: true });
 }
 
 export function useMedicines() {

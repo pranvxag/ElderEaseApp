@@ -36,6 +36,7 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Personal Info</Text>
         <InfoRow label="Name" value={profile?.displayName || user.displayName || ''} />
         <InfoRow label="Email" value={profile?.email || user.email || ''} />
+        <InfoRow label="Phone Number" value={profile?.phoneNumber || ''} />
         <InfoRow label="Age" value={profile?.age} />
         <InfoRow label="Blood Group" value={profile?.bloodGroup} />
         <InfoRow label="Allergies" value={profile?.allergies} />
