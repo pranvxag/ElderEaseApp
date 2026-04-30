@@ -79,6 +79,17 @@ try {
 
 export { analytics, auth, db, hasFirebaseConfig };
 
+// Defensive: some Firebase auth internals read `auth.settings.appVerificationDisabledForTesting`.
+// Ensure the `settings` object exists to avoid "Cannot read properties of undefined" errors
+// when running phone auth flows in web or test environments.
+try {
+  if (typeof auth === 'object' && auth !== null && (auth as any).settings === undefined) {
+    (auth as any).settings = {};
+  }
+} catch {
+  // ignore
+}
+
 export function cleanForFirestore<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) return obj.map((v) => cleanForFirestore(v)) as unknown as T;

@@ -11,11 +11,39 @@ import {
     View,
 } from 'react-native';
 
+/**
+ * Simple info display row
+ */
 function InfoRow({ label, value }: { label: string; value?: string }) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value?.trim() ? value : 'Not provided'}</Text>
+    </View>
+  );
+}
+
+/**
+ * Editable phone info row with button to change phone
+ */
+function PhoneInfoRow({
+  label,
+  value,
+  onEdit,
+}: {
+  label: string;
+  value?: string;
+  onEdit: () => void;
+}) {
+  return (
+    <View style={styles.phoneRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value?.trim() ? value : 'Not verified'}</Text>
+      </View>
+      <TouchableOpacity style={styles.phoneEditButton} onPress={onEdit} activeOpacity={0.7}>
+        <Text style={styles.phoneEditButtonText}>Change</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -27,6 +55,15 @@ export default function ProfileScreen() {
 
   if (loading || !user) return null;
 
+  const handleEditPhone = () => {
+    router.push({
+      pathname: '/(tabs)/profile/phone-edit',
+      params: {
+        phoneNumber: profile?.phoneNumber || '',
+      },
+    });
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Profile</Text>
@@ -36,6 +73,11 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Personal Info</Text>
         <InfoRow label="Name" value={profile?.displayName || user.displayName || ''} />
         <InfoRow label="Email" value={profile?.email || user.email || ''} />
+        <PhoneInfoRow
+          label="Phone Number"
+          value={profile?.phoneNumber}
+          onEdit={handleEditPhone}
+        />
         <InfoRow label="Age" value={profile?.age} />
         <InfoRow label="Blood Group" value={profile?.bloodGroup} />
         <InfoRow label="Allergies" value={profile?.allergies} />
@@ -123,6 +165,12 @@ const styles = StyleSheet.create({
   infoRow: {
     marginBottom: Spacing.sm,
   },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+    gap: Spacing.md,
+  },
   infoLabel: {
     fontSize: FontSizes.sm,
     color: Colors.textMuted,
@@ -131,6 +179,17 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     color: Colors.textPrimary,
     marginTop: 2,
+  },
+  phoneEditButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radii.md,
+  },
+  phoneEditButtonText: {
+    color: '#fff',
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   card: {
     borderWidth: 1,

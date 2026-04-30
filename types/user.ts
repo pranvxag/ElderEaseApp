@@ -53,6 +53,8 @@ export type UserProfile = {
   displayName: string;
   email: string;
   photoURL?: string;
+  phoneNumber?: string;
+  phoneVerified?: boolean;
   age?: string;
   bloodGroup?: string;
   allergies?: string;

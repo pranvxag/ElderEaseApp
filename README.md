@@ -1,8 +1,41 @@
 # ElderEase App
 
+⚠️ **CURRENT STATUS (30 Apr 2026, 15:45 UTC)**: OTP Authentication is NOT working. Firebase Phone Auth flow experiencing `User not authenticated` error when attempting to send OTP on web. Issue under investigation — see "Authentication Troubleshooting" section below for details.
+
 Lightweight mobile app for elder care: medication reminders, scan & parse prescriptions, upload lab reports, and an AI-assisted voice call flow for capturing blood sugar readings.
 
 Release note: updates applied Apr 27, 2026 — switched the AI call flow to Groq through the local server proxy, kept Google Speech APIs for STT/TTS, and improved retry/backoff behavior.
+
+---
+
+## Authentication Troubleshooting (30 Apr 2026)
+
+**Issue**: After Google Sign-In, phone verification screen appears but clicking "Send OTP" returns "User not authenticated" error.
+
+**Root Cause** (Under Investigation):
+- `auth.currentUser` is null or undefined when `startPhoneVerification` callback is invoked
+- Possible timing gap between Firebase auth state persistence and callback execution
+- May be related to dependency array or auth listener re-registration
+
+**Changes Made to Debug/Fix**:
+1. **Fixed auth listener re-registration** (`useAuth.tsx` line 402): Changed dependency array from `[ensureUserProfile]` to `[]` to prevent listener re-setup on every render
+2. **Switched to `auth.currentUser`** (lines 226, 319): Now using Firebase's synchronous `auth.currentUser` instead of React state `user` for immediate user reference
+3. **Added fallback to state `user`** (line 238): If `auth.currentUser` is null, fallback to React state `user` as workaround
+4. **Added debug logging** (line 231): `DEBUG startPhoneVerification` logged to console showing `currentUserUid`, `currentUserEmail`, and `authAppName`
+5. **Fixed `confirmPhoneVerification` references** (line 319): Updated to use `currentUser` variable instead of state `user`
+6. **Added env toggle for testing** (line 40): `EXPO_PUBLIC_FIREBASE_DISABLE_APP_VERIFICATION=true` disables reCAPTCHA and allows Firebase test phone numbers
+7. **Added RecaptchaVerifier fallback** (line 265): Ensured `auth.settings` exists and `getAuth()` fallback for obtaining valid Auth instance
+
+**Test Phone Numbers Configured**:
+- Firebase Console → Authentication → Sign-in method → Phone → Phone numbers for testing
+- Example: `+91 8010561437` → OTP `000000`
+
+**Next Steps**:
+- [ ] Check browser console for `DEBUG startPhoneVerification` output to confirm if `currentUserUid` is populated
+- [ ] Verify Firebase Console test phone entries are correct
+- [ ] Consider adding explicit `await auth.authStateReady()` before phone verification
+- [ ] May need to investigate if `ensureUserProfile` is clearing or resetting auth state
+- [ ] Test on Android/iOS native builds (issue may be web-specific)
 
 ---
 
