@@ -13,11 +13,23 @@ v5.0.0
 ## Recent Updates
 
 ### Firebase Firestore Fix
-- Fixed "Unsupported field value: undefined" error when writing to Firestore
-- Added cleanForFirestore() utility in lib/firebase.ts that strips undefined 
   fields before any Firestore write
-- Applied cleanForFirestore() across all write helpers in the codebase
-- Affected path: users/{uid}/profile/data
+
+30/04/2026
+v5.1.0  — Twilio Call
+
+## v5.1.0 (30 Apr 2026)
+
+- **Twilio call sugar ingestion**: Added server endpoint `POST /call/sugar-response` which accepts `{ uid, transcript }`, extracts numeric sugar readings from speech (e.g. "My sugar is 120"), validates the value, and writes to Firestore at `users/{uid}/sugarlogs/{YYYY-MM-DD}` using `merge: true` with fields `{ date, level, source: 'call', timestamp }`.
+- **UI: Daily Sugar Report moved**: Migrated the Daily Sugar Report and manual input controls from the Emergency tab to the Scan tab (above "View Weekly Report"). Inputs save fasting/postFood readings to `users/{uid}/sugarlogs/{YYYY-MM-DD}` (merge:true).
+- **Client hook updates**: `useHealthData` now exposes `dailyLog`, `saveDailyReading`, and `logsLoading` for both manual and backend call entries; `DailySugarLog` types were extended to support `level`, `source`, and `timestamp` fields.
+- **Report UI**: Weekly report view in the Scan tab now shows call-sourced sugar readings alongside manual fasting/postFood readings and highlights out-of-range values.
+- **Code changes (high level)**: Updated files include `server/index.js` (Twilio call handler + helpers), `app/(tabs)/scan.tsx` (moved sugar UI + styles), `app/(tabs)/emergency.tsx` (removed duplicated sugar UI), and `constants/data.ts` (type updates).
+
+Notes:
+- Firestore writes use `merge: true` to avoid overwriting other fields in the same document.
+- Ensure `FIREBASE_SERVICE_ACCOUNT_PATH` or `server/firebase-key.json` is present for server-side writes; see `server/index.js` for initialization.
+
 
 
 

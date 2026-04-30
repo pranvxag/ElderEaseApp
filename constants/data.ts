@@ -50,6 +50,21 @@ export interface BloodSugarEntry {
   note?: string;
 }
 
+export interface SugarReading {
+  level: number;
+  time: string;
+  timestamp: string; // ISO
+}
+
+export interface DailySugarLog {
+  date: string; // YYYY-MM-DD
+  fasting?: SugarReading;
+  postFood?: SugarReading;
+  level?: number; // from backend call
+  source?: string; // "call"
+  timestamp?: string; // ISO
+}
+
 export interface RoutineItem {
   id: string;
   label: string;

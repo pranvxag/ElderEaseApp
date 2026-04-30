@@ -7,7 +7,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Alert,
     Animated,
     Dimensions,
     Linking,
@@ -62,7 +61,6 @@ export default function EmergencyScreen() {
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosCountdown, setSosCountdown] = useState(5);
   const [sosCancelled, setSosCancelled] = useState(false);
-
   const { latest } = useHealthData();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -133,6 +131,8 @@ export default function EmergencyScreen() {
     return null;
   }
 
+  
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -157,6 +157,8 @@ export default function EmergencyScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        
 
         {/* ── SOS Button Section ── */}
         <View style={styles.sosSection}>
@@ -609,4 +611,59 @@ const styles = StyleSheet.create({
     borderRadius: Radii.full,
   },
   recheckText: { color: Colors.primary, fontWeight: FontWeights.semibold },
+  rangeText: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.xs,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  sugarRow: {
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  sugarLabel: {
+    fontSize: FontSizes.sm,
+    color: Colors.textPrimary,
+    fontWeight: FontWeights.semibold,
+    marginBottom: Spacing.xs,
+  },
+  sugarInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  sugarInput: {
+    flex: 1,
+    backgroundColor: Colors.inputBg,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    color: Colors.textPrimary,
+  },
+  sugarSaveBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radii.md,
+  },
+  sugarSaveText: {
+    color: '#fff',
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  sugarValue: {
+    marginTop: Spacing.xs,
+    color: Colors.textPrimary,
+    fontSize: FontSizes.sm,
+  },
+  sugarValueMuted: {
+    marginTop: Spacing.xs,
+    color: Colors.textMuted,
+    fontSize: FontSizes.sm,
+  },
+  sugarValueAlert: {
+    color: Colors.emergency,
+    fontWeight: FontWeights.bold,
+  },
 });

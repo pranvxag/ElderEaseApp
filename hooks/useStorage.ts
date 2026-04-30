@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   ROUTINE: 'elderease:routine',
   LAST_REPORT_SENT: 'elderease:last_report_sent',
   BLOOD_SUGAR_ENTRIES: 'elderease:blood_sugar_entries',
+  SUGAR_LOGS: (uid: string) => `user_${uid}_sugar_logs`,
 } as const;
 
 // ── Generic read ─────────────────────────────────────────────────────────────
