@@ -5,8 +5,10 @@ import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/const
 import { useAuth } from '@/hooks/useAuth';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useProfile } from '@/hooks/useProfile';
+import { useWeeklyReport } from '@/hooks/useWeeklyReport';
 import { db, hasFirebaseConfig } from '@/lib/firebase';
 import { getRecentMedicineLogDates, getRecentMedicineLogs, MedicineLogDay } from '@/lib/medicine-logs';
+import { getWeekEndDate, getWeekStartDate } from '@/lib/week-utils';
 import { router } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -68,6 +70,7 @@ export default function ScanPickerScreen() {
   const uid = user?.uid ?? '';
 
   const { dailyLog, logsLoading, saveDailyReading } = useHealthData();
+  const { saveWeeklyReport } = useWeeklyReport();
   const [fastingInput, setFastingInput] = useState('');
   const [postFoodInput, setPostFoodInput] = useState('');
 
@@ -109,12 +112,47 @@ export default function ScanPickerScreen() {
       ]);
       setMedicineLogs(meds);
       setSugarLogs(sugars);
+      
+      // Auto-save weekly report in background (no alerts)
+      const weekStart = getWeekStartDate();
+      const weekEnd = getWeekEndDate();
+      saveWeeklyReport({
+        medicineLogDays: meds,
+        sugarLogs: sugars,
+        weekStartDate: weekStart,
+        weekEndDate: weekEnd,
+      }).catch((err) => console.warn('Auto-save weekly report failed:', err));
     } catch (error) {
       console.warn('Weekly report fetch failed:', error);
       setMedicineLogs([]);
       setSugarLogs([]);
     } finally {
       setReportLoading(false);
+    }
+  }
+
+  async function autoSaveWeeklyReport() {
+    if (!uid) {
+      console.log('⏳ No uid, skipping auto-save');
+      return;
+    }
+    try {
+      console.log('💾 Auto-saving weekly report after sugar entry...');
+      const [meds, sugars] = await Promise.all([
+        getRecentMedicineLogs(uid, 7),
+        getRecentSugarLogs(uid, 7),
+      ]);
+      const weekStart = getWeekStartDate();
+      const weekEnd = getWeekEndDate();
+      await saveWeeklyReport({
+        medicineLogDays: meds,
+        sugarLogs: sugars,
+        weekStartDate: weekStart,
+        weekEndDate: weekEnd,
+      });
+      console.log('✅ Auto-save complete');
+    } catch (err) {
+      console.error('❌ Auto-save weekly report failed:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -167,6 +205,40 @@ export default function ScanPickerScreen() {
     })();
     // intentionally run only once on mount
   }, []);
+
+  // Initialize blank weekly report for new users on app startup
+  useEffect(() => {
+    if (!uid) {
+      console.log('⏳ No uid yet, skipping weekly report init');
+      return;
+    }
+
+    (async () => {
+      try {
+        console.log('🔄 Initializing weekly report for user:', uid);
+        const [meds, sugars] = await Promise.all([
+          getRecentMedicineLogs(uid, 7),
+          getRecentSugarLogs(uid, 7),
+        ]);
+        console.log('📊 Fetched data:', { medsCount: meds.length, sugarsCount: sugars.length });
+        
+        const weekStart = getWeekStartDate();
+        const weekEnd = getWeekEndDate();
+        
+        console.log('💾 About to save weekly report...');
+        await saveWeeklyReport({
+          medicineLogDays: meds,
+          sugarLogs: sugars,
+          weekStartDate: weekStart,
+          weekEndDate: weekEnd,
+        });
+        
+        console.log(`✅ Weekly report initialized for user: ${uid}`);
+      } catch (err) {
+        console.error('❌ Failed to initialize weekly report:', err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [uid, saveWeeklyReport]);
 
   function handleAction(action: 'upload' | 'scan') {
     if (type === 'report') {
@@ -221,6 +293,8 @@ export default function ScanPickerScreen() {
                   try {
                     await saveDailyReading({ type: 'fasting', level: value });
                     setFastingInput('');
+                    // Auto-save weekly report after sugar reading
+                    autoSaveWeeklyReport();
                   } catch (err) {
                     console.warn('Saving sugar reading failed:', err);
                     Alert.alert('Save failed', 'Unable to save the reading. Please try again.');
@@ -263,6 +337,8 @@ export default function ScanPickerScreen() {
                   try {
                     await saveDailyReading({ type: 'postFood', level: value });
                     setPostFoodInput('');
+                    // Auto-save weekly report after sugar reading
+                    autoSaveWeeklyReport();
                   } catch (err) {
                     console.warn('Saving sugar reading failed:', err);
                     Alert.alert('Save failed', 'Unable to save the reading. Please try again.');

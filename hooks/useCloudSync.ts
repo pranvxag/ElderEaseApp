@@ -2,7 +2,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, useStoredState } from '@/hooks/useStorage';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
-import { hasFirebaseConfig } from '@/lib/firebase';
+import { cleanForFirestore, hasFirebaseConfig } from '@/lib/firebase';
 import { normalizeTimeSlots, slotToReminderTime } from '@/lib/medicine';
 import { profileDocRef, toFirestoreProfileData } from '@/lib/profile-data';
 import { Medicine, UserProfile } from '@/types/user';
@@ -134,7 +134,7 @@ export function useCloudSync() {
 
         if (!snapshot.exists()) {
           if (payload) {
-            const cleanPayload = toFirestoreProfileData(payload);
+            const cleanPayload = cleanForFirestore(toFirestoreProfileData(payload));
             await setDoc(ref, { ...cleanPayload, updatedAt: new Date().toISOString() }, { merge: true });
             lastSyncedFingerprintRef.current = JSON.stringify(cleanPayload);
           }
@@ -187,7 +187,7 @@ export function useCloudSync() {
     lastSyncedFingerprintRef.current = fingerprint;
 
     const ref = profileDocRef(user.uid);
-    const cleanPayload = toFirestoreProfileData((payload as any) ?? {});
+    const cleanPayload = cleanForFirestore(toFirestoreProfileData((payload as any) ?? {}));
     setDoc(ref, { ...cleanPayload, updatedAt: new Date().toISOString() }, { merge: true }).catch(
       (error) => {
         console.error('Cloud sync failed:', error);

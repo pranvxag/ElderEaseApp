@@ -1,3 +1,4 @@
+import { useAutoSaveWeeklyReport } from '@/hooks/useAutoSaveWeeklyReport';
 import { useMedications } from '@/hooks/useMedications';
 import { useMedicines } from '@/hooks/useMedicines';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -219,6 +220,7 @@ export default function MedicationsScreen() {
     recentMedicineLogs,
     loading,
   } = useMedications();
+  const { autoSaveAfterUpdate } = useAutoSaveWeeklyReport();
   const {
     addMedicine: addProfileMedicine,
     removeMedicine: removeProfileMedicine,
@@ -311,18 +313,26 @@ export default function MedicationsScreen() {
 
   function handleMarkTaken(id: string) {
     markTaken(id);
+    // Auto-save weekly report after medicine status changes
+    autoSaveAfterUpdate();
   }
 
   function handleMarkNotTaken(id: string) {
     markNotTaken(id);
+    // Auto-save weekly report after medicine status changes
+    autoSaveAfterUpdate();
   }
 
   function handleSnooze(id: string) {
     snoozeMedication(id);
+    // Auto-save weekly report after medicine status changes
+    autoSaveAfterUpdate();
   }
 
   function handleUndo(id: string) {
     undoTaken(id);
+    // Auto-save weekly report after medicine status changes
+    autoSaveAfterUpdate();
   }
 
   async function handleDelete(id: string) {

@@ -1,4 +1,4 @@
-import { db } from '@/lib/firebase';
+import { cleanForFirestore, db } from '@/lib/firebase';
 import { EmergencyContact, Medicine, PreferredLanguage, UserProfile } from '@/types/user';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -75,7 +75,7 @@ export async function ensureProfileData(user: ProfileSourceUser): Promise<Firest
     if (!snapshot.exists()) {
       const defaultProfile = createDefaultProfileData(user);
       try {
-        await setDoc(ref, defaultProfile, { merge: true });
+        await setDoc(ref, cleanForFirestore(defaultProfile), { merge: true });
       } catch (error) {
         console.error('Failed to create default profile in Firebase:', error);
       }
@@ -103,11 +103,7 @@ export async function ensureProfileData(user: ProfileSourceUser): Promise<Firest
 
     try {
       const firestoreData = toFirestoreProfileData(normalized);
-      // Remove any undefined values before saving
-      const cleanData = Object.fromEntries(
-        Object.entries(firestoreData).filter(([, v]) => v !== undefined)
-      );
-      await setDoc(ref, cleanData, { merge: true });
+      await setDoc(ref, cleanForFirestore(firestoreData), { merge: true });
     } catch (error) {
       console.error('Failed to sync profile to Firebase:', error);
     }
@@ -123,14 +119,10 @@ export async function ensureProfileData(user: ProfileSourceUser): Promise<Firest
 export async function updateProfileData(uid: string, patch: Partial<FirestoreProfileData>) {
   try {
     const firestoreData = toFirestoreProfileData(patch);
-    // Remove any undefined values before saving
-    const cleanData = Object.fromEntries(
-      Object.entries(firestoreData).filter(([, v]) => v !== undefined)
-    );
     await setDoc(
       profileDocRef(uid),
       {
-        ...cleanData,
+        ...cleanForFirestore(firestoreData),
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
