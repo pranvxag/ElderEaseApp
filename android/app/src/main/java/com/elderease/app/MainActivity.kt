@@ -1,4 +1,4 @@
-package com.elderease.app
+package com.pranavgale.elderease
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

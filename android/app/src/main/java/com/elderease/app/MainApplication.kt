@@ -1,4 +1,4 @@
-package com.elderease.app
+package com.pranavgale.elderease
 
 import android.app.Application
 import android.content.res.Configuration
