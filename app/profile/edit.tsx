@@ -331,7 +331,7 @@ export default function EditProfileScreen() {
       });
       await updateMedicines(medicines);
       await updateEmergencyContacts(normalizeEmergencyContacts(contacts));
-      router.back();
+      router.replace('/(tabs)/profile');
     } catch (error) {
       console.error('Save changes failed:', error);
       Alert.alert('Save failed', 'Could not save changes. Please try again.');

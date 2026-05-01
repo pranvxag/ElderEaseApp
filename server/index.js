@@ -11,6 +11,8 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 
+let firestoreDb = null;
+
 // Initialize Firebase Admin SDK
 try {
   const serviceAccountPath = path.resolve(__dirname, '..', process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'firebase-key.json');
@@ -18,11 +20,10 @@ try {
     credential: admin.credential.cert(require(serviceAccountPath)),
     projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   });
+  firestoreDb = admin.firestore();
 } catch (err) {
   console.warn('Firebase Admin SDK not configured. Sugar log endpoint will not work.', err.message);
 }
-
-const db = admin.firestore();
 
 // Simple health endpoint for local checks
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
@@ -172,6 +173,10 @@ app.post('/api/stt', async (req, res) => {
 // Body: { uid, transcript }
 app.post('/call/sugar-response', async (req, res) => {
   try {
+    if (!firestoreDb) {
+      return res.status(500).json({ error: 'Firebase Admin SDK is not configured on this server' });
+    }
+
     const { uid, transcript } = req.body;
 
     if (!uid || !transcript) {
@@ -186,7 +191,7 @@ app.post('/call/sugar-response', async (req, res) => {
     const dateKey = getDateKey();
     const timestamp = new Date().toISOString();
 
-    const docRef = db.collection('users').doc(uid).collection('sugarlogs').doc(dateKey);
+    const docRef = firestoreDb.collection('users').doc(uid).collection('sugarlogs').doc(dateKey);
     await docRef.set(
       {
         date: dateKey,

@@ -1,4 +1,4 @@
-import { EmergencyContact, MOCK_CONTACTS } from '@/constants/data';
+import { EmergencyContact } from '@/constants/data';
 import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
 import { db, hasFirebaseConfig } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -23,8 +23,8 @@ export function useEmergencyContacts() {
       ref,
       (snapshot) => {
         const data = snapshot.data() as { emergencyContacts?: EmergencyContact[] } | undefined;
-        if (snapshot.exists() && data?.emergencyContacts) {
-          setContacts(normalizeEmergencyContacts(data.emergencyContacts));
+        if (snapshot.exists()) {
+          setContacts(normalizeEmergencyContacts(data?.emergencyContacts ?? []));
         }
       },
       (error) => {
@@ -36,8 +36,12 @@ export function useEmergencyContacts() {
   }, [setContacts, user]);
 
   const normalizedContacts = useMemo(() => {
-    const source = contacts.length > 0 ? normalizeEmergencyContacts(contacts) : MOCK_CONTACTS;
+    const source = normalizeEmergencyContacts(contacts);
     const hasPrimary = source.some((contact) => Boolean(contact.isPrimary));
+
+    if (source.length === 0) {
+      return [];
+    }
 
     return source.map((contact, index) => {
       const computedInitials = contact.name

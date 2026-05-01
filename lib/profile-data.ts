@@ -69,44 +69,74 @@ export function toFirestoreProfileData(
 
 export async function ensureProfileData(user: ProfileSourceUser): Promise<FirestoreProfileData> {
   const ref = profileDocRef(user.uid);
-  const snapshot = await getDoc(ref);
+  try {
+    const snapshot = await getDoc(ref);
 
-  if (!snapshot.exists()) {
-    const defaultProfile = createDefaultProfileData(user);
-    await setDoc(ref, defaultProfile, { merge: true });
-    return defaultProfile;
+    if (!snapshot.exists()) {
+      const defaultProfile = createDefaultProfileData(user);
+      try {
+        await setDoc(ref, defaultProfile, { merge: true });
+      } catch (error) {
+        console.error('Failed to create default profile in Firebase:', error);
+      }
+      return defaultProfile;
+    }
+
+    const data = snapshot.data() as Partial<FirestoreProfileData>;
+    const defaults = createDefaultProfileData(user);
+    const normalized: FirestoreProfileData = {
+      ...defaults,
+      ...toFirestoreProfileData(data),
+      uid: user.uid,
+      displayName: data.displayName ?? defaults.displayName,
+      email: data.email ?? defaults.email,
+      phoneNumber: data.phoneNumber ?? '',
+      phoneVerified: Boolean(data.phoneVerified),
+      photoURL: data.photoURL ?? defaults.photoURL,
+      preferredLanguage: data.preferredLanguage ?? 'en',
+      bloodGroup: data.bloodGroup ?? '',
+      medicines: Array.isArray(data.medicines) ? data.medicines : [],
+      emergencyContacts: Array.isArray(data.emergencyContacts) ? data.emergencyContacts : [],
+      createdAt: data.createdAt ?? defaults.createdAt,
+      updatedAt: data.updatedAt ?? defaults.updatedAt,
+    };
+
+    try {
+      const firestoreData = toFirestoreProfileData(normalized);
+      // Remove any undefined values before saving
+      const cleanData = Object.fromEntries(
+        Object.entries(firestoreData).filter(([, v]) => v !== undefined)
+      );
+      await setDoc(ref, cleanData, { merge: true });
+    } catch (error) {
+      console.error('Failed to sync profile to Firebase:', error);
+    }
+    
+    return normalized;
+  } catch (error) {
+    console.error('ensureProfileData error:', error);
+    // Return a default profile if Firebase fails
+    return createDefaultProfileData(user);
   }
-
-  const data = snapshot.data() as Partial<FirestoreProfileData>;
-  const defaults = createDefaultProfileData(user);
-  const normalized: FirestoreProfileData = {
-    ...defaults,
-    ...toFirestoreProfileData(data),
-    uid: user.uid,
-    displayName: data.displayName ?? defaults.displayName,
-    email: data.email ?? defaults.email,
-    phoneNumber: data.phoneNumber ?? '',
-    phoneVerified: Boolean(data.phoneVerified),
-    photoURL: data.photoURL ?? defaults.photoURL,
-    preferredLanguage: data.preferredLanguage ?? 'en',
-    bloodGroup: data.bloodGroup ?? '',
-    medicines: Array.isArray(data.medicines) ? data.medicines : [],
-    emergencyContacts: Array.isArray(data.emergencyContacts) ? data.emergencyContacts : [],
-    createdAt: data.createdAt ?? defaults.createdAt,
-    updatedAt: data.updatedAt ?? defaults.updatedAt,
-  };
-
-  await setDoc(ref, toFirestoreProfileData(normalized), { merge: true });
-  return normalized;
 }
 
 export async function updateProfileData(uid: string, patch: Partial<FirestoreProfileData>) {
-  await setDoc(
-    profileDocRef(uid),
-    {
-      ...toFirestoreProfileData(patch),
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  try {
+    const firestoreData = toFirestoreProfileData(patch);
+    // Remove any undefined values before saving
+    const cleanData = Object.fromEntries(
+      Object.entries(firestoreData).filter(([, v]) => v !== undefined)
+    );
+    await setDoc(
+      profileDocRef(uid),
+      {
+        ...cleanData,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.error('Failed to update profile:', error);
+    // Don't throw - let the app continue
+  }
 }

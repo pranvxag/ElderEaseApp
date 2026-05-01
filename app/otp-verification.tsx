@@ -10,6 +10,14 @@ function normalizeOtpValue(value: string) {
   return value.replace(/\D/g, '').slice(0, 6);
 }
 
+function normalizeIndianPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length > 10) {
+    return digits.slice(-10);
+  }
+  return digits.slice(0, 10);
+}
+
 function showToast(message: string) {
   if (Platform.OS === 'android') {
     ToastAndroid.show(message, ToastAndroid.SHORT);
@@ -30,7 +38,7 @@ export default function OTPVerificationScreen() {
   const isEditMode = params.edit === '1';
   const phoneNumber = useMemo(() => {
     const value = Array.isArray(params.phoneNumber) ? params.phoneNumber[0] : params.phoneNumber;
-    return normalizeOtpValue(value ?? '');
+    return normalizeIndianPhoneNumber(value ?? '');
   }, [params.phoneNumber]);
   const isComplete = otpDigits.every((digit) => digit.length === 1);
 

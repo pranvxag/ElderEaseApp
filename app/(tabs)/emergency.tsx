@@ -235,6 +235,13 @@ export default function EmergencyScreen() {
             </TouchableOpacity>
           </View>
 
+          {contacts.length === 0 ? (
+            <View style={styles.emptyContactsCard}>
+              <Text style={styles.emptyContactsTitle}>No emergency contacts saved</Text>
+              <Text style={styles.emptyContactsText}>Add contacts in your profile so this screen can use the latest Firestore data.</Text>
+            </View>
+          ) : null}
+
           {contacts.map((contact) => (
             <ContactCard key={contact.id} contact={contact} onCall={handleCallContact} />
           ))}
@@ -426,6 +433,25 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
     color: Colors.primary,
+  },
+  emptyContactsCard: {
+    backgroundColor: Colors.cardBg,
+    borderRadius: Radii.lg,
+    padding: Spacing.base,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.md,
+  },
+  emptyContactsTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  emptyContactsText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    lineHeight: 22,
   },
 
   // Contact card

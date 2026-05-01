@@ -1,11 +1,10 @@
 import { useAuth } from '@/hooks/useAuth';
 import { STORAGE_KEYS, storageSet, useStoredState } from '@/hooks/useStorage';
 import { normalizeEmergencyContacts } from '@/lib/emergency-contacts';
-import { cleanForFirestore, hasFirebaseConfig } from '@/lib/firebase';
+import { hasFirebaseConfig } from '@/lib/firebase';
 import { normalizeTimeSlots, slotToReminderTime } from '@/lib/medicine';
-import { profileDocRef } from '@/lib/profile-data';
+import { updateProfileData } from '@/lib/profile-data';
 import { EmergencyContact, Medicine, UserProfile } from '@/types/user';
-import { arrayRemove, arrayUnion, setDoc } from 'firebase/firestore';
 import { useCallback } from 'react';
 import { Medication as TrackerMedication } from '../constants/data';
 
@@ -97,6 +96,10 @@ export function useUserProfile() {
 
       setProfile(merged);
       await storageSet(STORAGE_KEYS.PROFILE(user.uid), merged);
+
+      if (hasFirebaseConfig) {
+        await updateProfileData(user.uid, merged);
+      }
     },
     [profile, setProfile, user]
   );
@@ -123,9 +126,6 @@ export function useUserProfile() {
       if (!user) return;
       const now = new Date().toISOString();
       const normalizedContacts = normalizeEmergencyContacts(contacts);
-      const previousContacts = normalizeEmergencyContacts(profile?.emergencyContacts ?? []);
-      const previousBySlot = new Map(previousContacts.map((contact) => [contact.slot ?? contact.id, contact]));
-      const nextBySlot = new Map(normalizedContacts.map((contact) => [contact.slot ?? contact.id, contact]));
 
       setProfile((prev) => {
         const base = prev ?? makeDefaultProfile(user.uid, user.email ?? '', user.displayName ?? '', user.photoURL);
@@ -137,24 +137,11 @@ export function useUserProfile() {
       });
       await storageSet(STORAGE_KEYS.EMERGENCY_CONTACTS(user.uid), normalizedContacts);
 
-      if (!hasFirebaseConfig) return;
-
-      const ref = profileDocRef(user.uid);
-
-      for (const contact of previousContacts) {
-        const key = contact.slot ?? contact.id;
-        const next = nextBySlot.get(key);
-        if (!next || JSON.stringify(next) !== JSON.stringify(contact)) {
-          await setDoc(ref, { emergencyContacts: arrayRemove(cleanForFirestore(contact) as any), updatedAt: now } as any, { merge: true });
-        }
-      }
-
-      for (const contact of normalizedContacts) {
-        const key = contact.slot ?? contact.id;
-        const prevContact = previousBySlot.get(key);
-        if (!prevContact || JSON.stringify(prevContact) !== JSON.stringify(contact)) {
-          await setDoc(ref, { emergencyContacts: arrayUnion(cleanForFirestore(contact) as any), updatedAt: now } as any, { merge: true });
-        }
+      if (hasFirebaseConfig) {
+        await updateProfileData(user.uid, {
+          emergencyContacts: normalizedContacts,
+          updatedAt: now,
+        });
       }
     },
     [setProfile, user]
