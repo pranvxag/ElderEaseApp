@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 require('dotenv').config();
 const express = require('express');
@@ -16,8 +17,9 @@ let firestoreDb = null;
 // Initialize Firebase Admin SDK
 try {
   const serviceAccountPath = path.resolve(__dirname, '..', process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'firebase-key.json');
+  const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
   admin.initializeApp({
-    credential: admin.credential.cert(require(serviceAccountPath)),
+    credential: admin.credential.cert(serviceAccount),
     projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   });
   firestoreDb = admin.firestore();

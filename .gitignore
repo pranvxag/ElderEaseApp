@@ -2,6 +2,7 @@
 # Credentials
 credentials/
 credentials/android/keystore.jks
+firebase-key.json
 
 # iOS
 ios/.xcode.env

@@ -231,7 +231,7 @@ export default function MedicationsScreen() {
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<MedStatus | 'all'>('all');
   const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
-  const [selectedLogDate, setSelectedLogDate] = useState('');
+  const [selectedLogDate, setSelectedLogDate] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -272,12 +272,12 @@ export default function MedicationsScreen() {
 
   const filtered = filter === 'all' ? meds : meds.filter((m) => m.status === filter);
 
-  React.useEffect(() => {
-    if (recentMedicineLogs.length === 0) return;
-    const hasSelected = recentMedicineLogs.some((day) => day.date === selectedLogDate);
-    if (!selectedLogDate || !hasSelected) {
-      setSelectedLogDate(recentMedicineLogs[recentMedicineLogs.length - 1].date);
+  const effectiveSelectedLogDate = React.useMemo(() => {
+    if (recentMedicineLogs.length === 0) return '';
+    if (selectedLogDate && recentMedicineLogs.some((day) => day.date === selectedLogDate)) {
+      return selectedLogDate;
     }
+    return recentMedicineLogs[recentMedicineLogs.length - 1].date;
   }, [recentMedicineLogs, selectedLogDate]);
 
   if (loading || profileLoading || profileMedicinesLoading) return null;
@@ -569,11 +569,11 @@ export default function MedicationsScreen() {
               {recentMedicineLogs.map((day) => (
                 <TouchableOpacity
                   key={day.date}
-                  style={[styles.historyChip, selectedLogDate === day.date && styles.historyChipActive]}
+                  style={[styles.historyChip, effectiveSelectedLogDate === day.date && styles.historyChipActive]}
                   onPress={() => setSelectedLogDate(day.date)}
                   activeOpacity={0.85}
                 >
-                  <Text style={[styles.historyChipText, selectedLogDate === day.date && styles.historyChipTextActive]}>
+                  <Text style={[styles.historyChipText, effectiveSelectedLogDate === day.date && styles.historyChipTextActive]}>
                     {day.date.slice(5).replace('-', '/')}
                   </Text>
                 </TouchableOpacity>
@@ -582,7 +582,7 @@ export default function MedicationsScreen() {
 
             <View style={{ marginTop: 8 }}>
               {recentMedicineLogs
-                .filter((day) => day.date === selectedLogDate)
+                .filter((day) => day.date === effectiveSelectedLogDate)
                 .map((day) => (
                   <ScrollView key={day.date} style={styles.historyCard} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                     {day.entries.length === 0 ? (
