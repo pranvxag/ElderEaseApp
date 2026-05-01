@@ -9,14 +9,15 @@ import AICallLogo from '@/components/icons/AICallLogo';
 import ScanLogo from '@/components/icons/ScanLogo';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
 
@@ -42,22 +43,31 @@ export default function HomeScreen() {
   const { takenCount, totalMeds, upcomingMeds, loading } = useMedications();
   const [routineItems, , routineLoading] = useStoredState(STORAGE_KEYS.ROUTINE, MOCK_ROUTINE);
 
-  if (loading || profileLoading || routineLoading) return null; // or a spinner
+  if (loading || profileLoading || routineLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
   const greeting = getGreeting();
   const todayStr = getTodayString();
 
   const routinePercent = routineItems.length > 0
     ? Math.round((routineItems.filter((item) => item.done).length / routineItems.length) * 100)
     : 0;
+  const medsPercent = totalMeds > 0 ? Math.round((takenCount / totalMeds) * 100) : 0;
 
-  const tip = Array.isArray(HEALTH_TIPS) && HEALTH_TIPS.length > 0
-    ? HEALTH_TIPS[Math.floor(Math.random() * HEALTH_TIPS.length)]
-    : {
-        tip: "Stay hydrated and take your medicines on time.",
-        category: "General",
-        icon: "heart",
-        color: Colors.primary,
-      };
+  const tip = useMemo(() => {
+    return Array.isArray(HEALTH_TIPS) && HEALTH_TIPS.length > 0
+      ? HEALTH_TIPS[Math.floor(Math.random() * HEALTH_TIPS.length)]
+      : {
+          tip: 'Stay hydrated and take your medicines on time.',
+          category: 'General',
+          icon: 'heart',
+          color: Colors.primary,
+        };
+  }, []);
 
   return (
     <ScrollView
@@ -90,14 +100,14 @@ export default function HomeScreen() {
             <Ionicons name="medical" size={22} color={Colors.primary} />
           </View>
           <Text style={styles.statNum}>
-            {takenCount}/{totalMeds}
+            {totalMeds > 0 ? `${takenCount}/${totalMeds}` : `${takenCount}/0`}
           </Text>
           <Text style={styles.statLabel}>Medicines{'\n'}Today</Text>
           <View style={[styles.statBar, { backgroundColor: Colors.border }]}>
             <View
-              style={[
+                style={[
                 styles.statBarFill,
-                { width: `${(takenCount / totalMeds) * 100}%`, backgroundColor: Colors.primary },
+                { width: `${medsPercent}%`, backgroundColor: Colors.primary },
               ]}
             />
           </View>

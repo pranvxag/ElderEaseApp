@@ -4,6 +4,7 @@ import { ensureProfileData } from '@/lib/profile-data';
 import { Stack, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
+import { ActivityIndicator, Text, View } from 'react-native';
 
 function RootLayoutContent() {
   const router = useRouter();
@@ -81,6 +82,15 @@ function RootLayoutContent() {
     };
 
   }, [authLoading, router, segments, user]);
+
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+        <Text style={{ marginTop: 12, color: '#666' }}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <>
