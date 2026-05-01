@@ -11,13 +11,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useMemo } from 'react';
 import {
-  ActivityIndicator,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
 
@@ -129,7 +129,7 @@ export default function HomeScreen() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(tabs)/emergency')}>
+        <TouchableOpacity style={styles.statCard} onPress={() => router.push('/emergency')}>
           <View style={[styles.statIcon, { backgroundColor: Colors.emergencyLight }]}>
             <Ionicons name="heart" size={22} color={Colors.emergency} />
           </View>
@@ -232,7 +232,7 @@ export default function HomeScreen() {
       <TouchableOpacity
         style={styles.emergencyBanner}
         activeOpacity={0.85}
-        onPress={() => router.push('/(tabs)/emergency')}
+        onPress={() => router.push('/emergency')}
       >
         <Ionicons name="alert-circle" size={28} color="#fff" />
         <View style={styles.emergencyBannerText}>

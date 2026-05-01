@@ -6,29 +6,29 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { getApiProxyBaseUrl } from '@/lib/apiProxy';
 import { LANGUAGE_CODES, PreferredLanguage } from '@/types/user';
 import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioPlayer,
-  useAudioRecorder,
+    RecordingPresets,
+    requestRecordingPermissionsAsync,
+    setAudioModeAsync,
+    useAudioPlayer,
+    useAudioRecorder,
 } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Animated,
+    Dimensions,
+    Easing,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -574,7 +574,7 @@ export default function AICallScreen() {
     const transcript = messages.map(m => `${m.role === 'agent' ? 'Agent' : 'You'}: ${m.text}`).join('\n');
     addEntry({ value: detectedSugar, unit: 'mg/dL', source: 'ai-call', transcript });
     Alert.alert('Saved!', `Blood sugar ${detectedSugar} mg/dL saved.`, [
-      { text: 'OK', onPress: () => router.replace('/(tabs)/emergency') },
+      { text: 'OK', onPress: () => router.replace('/emergency') },
     ]);
   }
 

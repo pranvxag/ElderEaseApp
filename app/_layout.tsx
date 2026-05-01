@@ -5,6 +5,11 @@ import { Stack, useLocalSearchParams, useRouter, useSegments } from 'expo-router
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+ 
+function CloudSyncBridge() {
+  useCloudSync();
+  return null;
+}
 
 function RootLayoutContent() {
   const router = useRouter();
@@ -16,7 +21,6 @@ function RootLayoutContent() {
     needsPhone: false,
     phoneNumber: '',
   });
-  useCloudSync();
 
   useEffect(() => {
     const topSegment = segments[0];
@@ -110,6 +114,7 @@ function RootLayoutContent() {
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <CloudSyncBridge />
       <RootLayoutContent />
     </AuthProvider>
   );

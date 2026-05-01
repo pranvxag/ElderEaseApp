@@ -75,8 +75,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ai-call"
         options={{
-          title: 'AI Call',
-          headerTitle: '🧠 AI Call',
+          title: 'AI Chat',
+          headerTitle: '💬 AI Chat',
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconWrapper, focused && styles.iconWrapperActive]}>
               <AICallLogo size={28} bgColor="transparent" color={color} />
@@ -100,18 +100,6 @@ export default function TabLayout() {
         options={{
           headerTitle: 'Profile Settings',
           href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="emergency"
-        options={{
-          title: 'Emergency',
-          headerTitle: '🚨 Emergency',
-          headerStyle: { backgroundColor: Colors.emergency },
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon name={focused ? 'alert-circle' : 'alert-circle-outline'} color={color} focused={focused} />
-          ),
-          tabBarActiveTintColor: Colors.emergency,
         }}
       />
       <Tabs.Screen name="scan-prescription" options={{ href: null }} />

@@ -7,16 +7,16 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Linking,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    Animated,
+    Dimensions,
+    Linking,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -67,7 +67,6 @@ export default function EmergencyScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Pulse animation for SOS button
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -132,13 +131,9 @@ export default function EmergencyScreen() {
     return null;
   }
 
-  
-
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-
-        {/* ── Warning Banner ── */}
         <View style={styles.warningBanner}>
           <Ionicons name="information-circle" size={20} color={Colors.emergency} />
           <Text style={styles.warningText}>
@@ -146,8 +141,6 @@ export default function EmergencyScreen() {
           </Text>
         </View>
 
-        {/* ── Latest Reading Strip (from AI call / manual) ── */}
-        {/** show latest entry if present **/}
         {latest ? (
           <View style={styles.latestStrip}>
             <Text style={styles.latestText}>
@@ -159,21 +152,12 @@ export default function EmergencyScreen() {
           </View>
         ) : null}
 
-        
-
-        {/* ── SOS Button Section ── */}
         <View style={styles.sosSection}>
           <Text style={styles.sosLabel}>Press if you need immediate help</Text>
-
-          {/* Outer ring */}
           <View style={styles.sosRingOuter}>
             <View style={styles.sosRingMid}>
               <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <TouchableOpacity
-                  style={styles.sosBtn}
-                  onPress={handleSOSPress}
-                  activeOpacity={0.9}
-                >
+                <TouchableOpacity style={styles.sosBtn} onPress={handleSOSPress} activeOpacity={0.9}>
                   <Ionicons name="alert-circle" size={48} color="#fff" />
                   <Text style={styles.sosBtnText}>HELP</Text>
                   <Text style={styles.sosBtnSub}>TAP FOR EMERGENCY</Text>
@@ -187,7 +171,6 @@ export default function EmergencyScreen() {
           </Text>
         </View>
 
-        {/* ── Quick Actions ── */}
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.quickBtn}
@@ -223,7 +206,6 @@ export default function EmergencyScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── Contacts List ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Emergency Contacts</Text>
@@ -248,7 +230,6 @@ export default function EmergencyScreen() {
           ))}
         </View>
 
-        {/* ── Safety Tips ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Safety Tips</Text>
           {[
@@ -269,7 +250,6 @@ export default function EmergencyScreen() {
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {/* ── SOS Countdown Modal ── */}
       <Modal visible={showSOSModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.countdownModal}>
@@ -312,7 +292,6 @@ const styles = StyleSheet.create({
   },
   warningBold: { fontWeight: FontWeights.heavy },
 
-  // SOS Section
   sosSection: {
     alignItems: 'center',
     paddingVertical: Spacing.xxl,
@@ -377,7 +356,6 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
   },
 
-  // Quick actions
   quickActions: {
     flexDirection: 'row',
     paddingHorizontal: Spacing.base,
@@ -408,7 +386,6 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.medium,
   },
 
-  // Section
   section: { paddingHorizontal: Spacing.base, paddingTop: Spacing.lg },
   sectionHeader: {
     flexDirection: 'row',
@@ -455,7 +432,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Contact card
   contactCard: {
     backgroundColor: Colors.cardBg,
     borderRadius: Radii.lg,
@@ -537,7 +513,6 @@ const styles = StyleSheet.create({
   },
   callBtnPrimary: { backgroundColor: Colors.primary },
 
-  // Safety tips
   tipItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -564,7 +539,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
 
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
