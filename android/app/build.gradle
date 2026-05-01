@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.elderease.app'
+    namespace 'com.pranavgale.elderease'
     defaultConfig {
-        applicationId 'com.elderease.app'
+        applicationId 'com.pranavgale.elderease'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
