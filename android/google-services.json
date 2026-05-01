@@ -18,7 +18,23 @@
           "client_type": 1,
           "android_info": {
             "package_name": "com.pranavgale.elderease",
+            "certificate_hash": "9e05ebd6de32436b4be35950b3c46584397ae3e7"
+          }
+        },
+        {
+          "client_id": "994743956796-dra7ge6gt6ic2403oonhuvap68orde5a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pranavgale.elderease",
             "certificate_hash": "5a5bc0e72207ed4e67214ee44a8072bd213e91a8"
+          }
+        },
+        {
+          "client_id": "994743956796-edsukj7igj975trhnjaolnv9u6ms99he.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pranavgale.elderease",
+            "certificate_hash": "2e3e941f7c3c674517ad5490a6c90f0d620eabd2"
           }
         },
         {
