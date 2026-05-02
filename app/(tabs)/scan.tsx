@@ -9,8 +9,9 @@ import { useWeeklyReport } from '@/hooks/useWeeklyReport';
 import { db, hasFirebaseConfig } from '@/lib/firebase';
 import { getRecentMedicineLogDates, getRecentMedicineLogs, MedicineLogDay } from '@/lib/medicine-logs';
 import { getWeekEndDate, getWeekStartDate } from '@/lib/week-utils';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -63,6 +64,7 @@ export default function ScanPickerScreen() {
   const initialTypeRef = useRef(type);
   const [reportVisible, setReportVisible] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportRequestLoading, setReportRequestLoading] = useState<'daily' | 'weekly' | null>(null);
   const [medicineLogs, setMedicineLogs] = useState<MedicineLogDay[]>([]);
   const [sugarLogs, setSugarLogs] = useState<SugarLogDay[]>([]);
   const { user } = useAuth();
@@ -153,6 +155,42 @@ export default function ScanPickerScreen() {
       console.log('✅ Auto-save complete');
     } catch (err) {
       console.error('❌ Auto-save weekly report failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleReportRequest(type: 'daily' | 'weekly') {
+    if (!user) {
+      Alert.alert('Failed to request report. Please try again.');
+      return;
+    }
+
+    if (!hasFirebaseConfig) {
+      Alert.alert('Failed to request report. Please try again.');
+      return;
+    }
+
+    setReportRequestLoading(type);
+    try {
+      const now = new Date();
+      const requestCollection = collection(db, 'users', user.uid, 'reportRequests');
+      const legacyProfile = profile as { name?: string; phoneNumber?: string };
+
+      await addDoc(requestCollection, {
+        type,
+        status: 'pending',
+        requestedAt: now.toISOString(),
+        date: now.toLocaleDateString('en-IN'),
+        time: now.toLocaleTimeString('en-IN'),
+        userName: legacyProfile.name || user.displayName || 'User',
+        userPhone: legacyProfile.phoneNumber || '',
+      });
+
+      Alert.alert('Report request sent! You will receive it shortly.');
+    } catch (error) {
+      console.warn('Failed to request report:', error);
+      Alert.alert('Failed to request report. Please try again.');
+    } finally {
+      setReportRequestLoading(null);
     }
   }
 
@@ -402,6 +440,44 @@ export default function ScanPickerScreen() {
         <Text style={styles.reportButtonText}>View Weekly Report</Text>
       </TouchableOpacity>
 
+      <View style={styles.reportRequestActions}>
+        <TouchableOpacity
+          style={[
+            styles.reportRequestButton,
+            styles.reportRequestButtonPrimary,
+            reportRequestLoading === 'daily' && styles.reportRequestButtonDisabled,
+          ]}
+          onPress={() => handleReportRequest('daily')}
+          activeOpacity={0.85}
+          disabled={reportRequestLoading === 'daily'}
+        >
+          {reportRequestLoading === 'daily' ? (
+            <ActivityIndicator size="small" color={Colors.textOnPrimary} />
+          ) : (
+            <Ionicons name="document-text-outline" size={20} color={Colors.textOnPrimary} />
+          )}
+          <Text style={styles.reportRequestButtonTextPrimary}>Send Today's Report</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.reportRequestButton,
+            styles.reportRequestButtonSecondary,
+            reportRequestLoading === 'weekly' && styles.reportRequestButtonDisabled,
+          ]}
+          onPress={() => handleReportRequest('weekly')}
+          activeOpacity={0.85}
+          disabled={reportRequestLoading === 'weekly'}
+        >
+          {reportRequestLoading === 'weekly' ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Ionicons name="bar-chart-outline" size={20} color={Colors.primary} />
+          )}
+          <Text style={styles.reportRequestButtonTextSecondary}>Send Weekly Report</Text>
+        </TouchableOpacity>
+      </View>
+
       <Modal visible={reportVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -492,6 +568,42 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   reportButtonText: { color: '#fff', fontSize: FontSizes.md, fontWeight: FontWeights.bold },
+  reportRequestActions: {
+    width: '100%',
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  reportRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderRadius: Radii.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.base,
+  },
+  reportRequestButtonPrimary: {
+    backgroundColor: Colors.primary,
+    ...Shadows.card,
+  },
+  reportRequestButtonSecondary: {
+    backgroundColor: Colors.cardBg,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  reportRequestButtonDisabled: {
+    opacity: 0.7,
+  },
+  reportRequestButtonTextPrimary: {
+    color: Colors.textOnPrimary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  reportRequestButtonTextSecondary: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

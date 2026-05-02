@@ -70,6 +70,20 @@ Refer to the app folder for the full file-based routing layout.
 
 ---
 
+Account Management
+Switching Expo Account
+If the monthly build limit is reached, switch to a different Expo account:
+basheas logout
+eas login
+eas build --profile preview --platform android
+Also update app.json:
+json{
+  "expo": {
+    "owner": "new_expo_username"
+  }
+}
+
+
 **APIs required (no real keys included)**
 
 Add the following API credentials to your *server-side* environment (never in client/public env):
