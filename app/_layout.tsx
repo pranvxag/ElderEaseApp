@@ -3,18 +3,13 @@ import { useCloudSync } from '@/hooks/useCloudSync';
 import { ensureProfileData } from '@/lib/profile-data';
 import { Stack, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 function RootLayoutContent() {
   const router = useRouter();
   const segments = useSegments();
   const params = useLocalSearchParams<{ edit?: string; phoneNumber?: string }>();
   const { user, loading: authLoading } = useAuth();
-  const [, setProfileStatus] = useState<{ loading: boolean; needsPhone: boolean; phoneNumber: string }>({
-    loading: true,
-    needsPhone: false,
-    phoneNumber: '',
-  });
   useCloudSync();
 
   useEffect(() => {
@@ -24,13 +19,9 @@ function RootLayoutContent() {
     const inOtp = topSegment === 'otp-verification';
     const isEditFlow = params.edit === '1';
 
-    if (authLoading) {
-      setProfileStatus({ loading: true, needsPhone: false, phoneNumber: '' });
-      return;
-    }
+    if (authLoading) return;
 
     if (!user) {
-      setProfileStatus({ loading: false, needsPhone: false, phoneNumber: '' });
       if (!inAuth) {
         router.replace('/auth');
       }
@@ -45,11 +36,6 @@ function RootLayoutContent() {
         if (cancelled) return;
 
         const needsPhone = !profile.phoneNumber.trim() || !profile.phoneVerified;
-        setProfileStatus({
-          loading: false,
-          needsPhone,
-          phoneNumber: profile.phoneNumber || '',
-        });
 
         // If in add-phone or otp-verification, allow the flow regardless of needsPhone status
         // This allows editing of phone number without immediate redirect
@@ -70,9 +56,6 @@ function RootLayoutContent() {
         }
       } catch (error) {
         console.error('Profile bootstrap failed:', error);
-        if (!cancelled) {
-          setProfileStatus({ loading: false, needsPhone: false, phoneNumber: '' });
-        }
       }
     })();
 
