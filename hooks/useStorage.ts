@@ -49,7 +49,11 @@ export async function storageRemove(key: string): Promise<void> {
 function notifySubscribers<T>(key: string, value: T) {
   const subs = storageSubscribers.get(key);
   if (subs) {
-    for (const cb of subs) cb(value);
+    for (const cb of subs) {
+      setTimeout(() => {
+        cb(value);
+      }, 0);
+    }
   }
 }
 

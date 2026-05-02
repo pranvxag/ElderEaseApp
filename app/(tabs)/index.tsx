@@ -11,12 +11,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
 
@@ -39,8 +39,9 @@ function getTodayString(): string {
 export default function HomeScreen() {
   const [profile, , profileLoading] = useProfile();
   const { latest } = useHealthData();
-  const { takenCount, totalMeds, upcomingMeds, loading } = useMedications();
+  const { meds, takenCount, totalMeds, loading } = useMedications();
   const [routineItems, , routineLoading] = useStoredState(STORAGE_KEYS.ROUTINE, MOCK_ROUTINE);
+  const upcomingMeds = React.useMemo(() => (meds ?? []).filter((med) => med.status === 'upcoming'), [meds]);
 
   if (loading || profileLoading || routineLoading) return null; // or a spinner
   const greeting = getGreeting();
@@ -143,14 +144,14 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {upcomingMeds.length === 0 ? (
+        {(upcomingMeds ?? []).length === 0 ? (
           <View style={styles.allDoneCard}>
             <Text style={styles.allDoneIcon}>🎉</Text>
             <Text style={styles.allDoneText}>All medicines taken today!</Text>
             <Text style={styles.allDoneSub}>Great job keeping up your streak.</Text>
           </View>
         ) : (
-          upcomingMeds.map((med) => (
+          (upcomingMeds ?? []).map((med) => (
             <View key={med.id} style={styles.upcomingCard}>
               <View style={[styles.pillDot, { backgroundColor: med.color }]} />
               <View style={styles.upcomingInfo}>

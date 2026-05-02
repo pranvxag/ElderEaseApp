@@ -1,36 +1,42 @@
+import { useAuth } from '@/hooks/useAuth';
 import { useAutoSaveWeeklyReport } from '@/hooks/useAutoSaveWeeklyReport';
 import { useMedications } from '@/hooks/useMedications';
 import { useMedicines } from '@/hooks/useMedicines';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { addMedicineToLogs, getLocalDateKey } from '@/lib/medicine-logs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useState } from 'react';
 import {
-    Alert,
-    LayoutAnimation,
-    Modal,
-    PanResponder,
-    Platform,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    UIManager,
-    View,
+  Alert,
+  LayoutAnimation,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  UIManager,
+  View,
 } from 'react-native';
-import MedicineTimeSlotPicker from '../../components/medicine-time-slot-picker';
 import { Medication, MedStatus } from '../../constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '../../constants/theme';
 import {
-    formatMedicationScheduleSummary,
-    FREQUENCY_OPTIONS,
-    getDefaultTimeSlots,
-    normalizeTimeSlots,
-    slotToReminderTime,
+  formatMedicationScheduleSummary,
+  FREQUENCY_OPTIONS,
+  getDefaultTimeSlots,
+  normalizeTimeSlots,
+  slotToReminderTime,
 } from '../../lib/medicine';
-import { Medicine } from '../../types/user';
+
+const TIME_ITEM_HEIGHT = 48;
+
+const HOURS = Array.from({ length: 12 }, (_, idx) => String(idx + 1));
+const MINUTES = Array.from({ length: 12 }, (_, idx) => String(idx * 5).padStart(2, '0'));
+const PERIODS = ['AM', 'PM'] as const;
 
 const STATUS_CONFIG: Record<MedStatus, { label: string; color: string; bg: string; icon: string }> = {
   taken: { label: 'Taken ✓', color: Colors.success, bg: Colors.successLight, icon: 'checkmark-circle' },
@@ -94,6 +100,210 @@ function Dropdown({
               ))}
             </ScrollView>
           </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+function getReminderDefaultsByFrequency(frequency: string): string[] {
+  if (frequency === 'Twice a day') {
+    return ['09:00 AM', '06:00 PM'];
+  }
+  if (frequency === 'Three times a day') {
+    return ['08:00 AM', '01:00 PM', '08:00 PM'];
+  }
+  return ['09:00 AM'];
+}
+
+function normalizeDisplayTime(time: string): string {
+  const [rawTime, periodRaw] = (time || '09:00 AM').split(' ');
+  const period = periodRaw === 'PM' ? 'PM' : 'AM';
+  const [rawHour = '9', rawMinute = '00'] = rawTime.split(':');
+  const hourNum = Number.parseInt(rawHour, 10);
+  const minuteNum = Number.parseInt(rawMinute, 10);
+  const hour = Number.isFinite(hourNum) && hourNum >= 1 && hourNum <= 12 ? String(hourNum).padStart(2, '0') : '09';
+  const minute = Number.isFinite(minuteNum) ? String(minuteNum).padStart(2, '0') : '00';
+  return `${hour}:${minute} ${period}`;
+}
+
+function AlarmTimePicker({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (time: string) => void;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedHour, setSelectedHour] = useState('09');
+  const [selectedMinute, setSelectedMinute] = useState('00');
+  const [selectedPeriod, setSelectedPeriod] = useState<'AM' | 'PM'>('AM');
+
+  const hourRef = React.useRef<ScrollView>(null);
+  const minuteRef = React.useRef<ScrollView>(null);
+  const periodRef = React.useRef<ScrollView>(null);
+
+  const displayValue = normalizeDisplayTime(value || '09:00 AM');
+
+  const syncFromValue = React.useCallback((nextValue: string) => {
+    const normalized = normalizeDisplayTime(nextValue || '09:00 AM');
+    const [timePart, periodPart] = normalized.split(' ');
+    const [hourPart, minutePart] = timePart.split(':');
+    setSelectedHour(hourPart);
+    setSelectedMinute(minutePart);
+    setSelectedPeriod(periodPart === 'PM' ? 'PM' : 'AM');
+
+    const hourIndex = Math.max(0, HOURS.findIndex((item) => item === String(Number.parseInt(hourPart, 10))));
+    const minuteIndex = Math.max(0, MINUTES.findIndex((item) => item === minutePart));
+    const periodIndex = PERIODS.findIndex((item) => item === (periodPart === 'PM' ? 'PM' : 'AM'));
+
+    requestAnimationFrame(() => {
+      hourRef.current?.scrollTo({ y: hourIndex * TIME_ITEM_HEIGHT, animated: false });
+      minuteRef.current?.scrollTo({ y: minuteIndex * TIME_ITEM_HEIGHT, animated: false });
+      periodRef.current?.scrollTo({ y: Math.max(0, periodIndex) * TIME_ITEM_HEIGHT, animated: false });
+    });
+  }, []);
+
+  const onHourScrollEnd = (offsetY: number) => {
+    const idx = Math.max(0, Math.min(HOURS.length - 1, Math.round(offsetY / TIME_ITEM_HEIGHT)));
+    setSelectedHour(String(Number(HOURS[idx])).padStart(2, '0'));
+  };
+
+  const onMinuteScrollEnd = (offsetY: number) => {
+    const idx = Math.max(0, Math.min(MINUTES.length - 1, Math.round(offsetY / TIME_ITEM_HEIGHT)));
+    setSelectedMinute(MINUTES[idx]);
+  };
+
+  const onPeriodScrollEnd = (offsetY: number) => {
+    const idx = Math.max(0, Math.min(PERIODS.length - 1, Math.round(offsetY / TIME_ITEM_HEIGHT)));
+    setSelectedPeriod(PERIODS[idx]);
+  };
+
+  return (
+    <View style={dd.wrapper}>
+      <Text style={dd.label}>{label}</Text>
+      <TouchableOpacity
+        style={styles.timeDisplay}
+        activeOpacity={0.85}
+        onPress={() => {
+          syncFromValue(displayValue);
+          setOpen(true);
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="alarm-outline" size={20} color={Colors.primary} />
+          <Text style={styles.timeDisplayText}>{displayValue}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.timePickerModal} onPress={() => setOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.timePickerSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.timePickerTitle}>{label}</Text>
+
+            <View style={styles.timeColumns}>
+              <View pointerEvents="none" style={styles.timeSelectionZone} />
+
+              <View style={styles.timeColumn}>
+                <ScrollView
+                  ref={hourRef}
+                  snapToInterval={TIME_ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.timeColumnContent}
+                  onMomentumScrollEnd={(e) => onHourScrollEnd(e.nativeEvent.contentOffset.y)}
+                >
+                  {HOURS.map((hour) => {
+                    const hourDisplay = String(Number(hour)).padStart(2, '0');
+                    const selected = selectedHour === hourDisplay;
+                    return (
+                      <TouchableOpacity
+                        key={hour}
+                        style={[styles.timeItem, selected && styles.timeItemSelected]}
+                        onPress={() => {
+                          setSelectedHour(hourDisplay);
+                          const idx = HOURS.findIndex((item) => item === hour);
+                          hourRef.current?.scrollTo({ y: idx * TIME_ITEM_HEIGHT, animated: true });
+                        }}
+                      >
+                        <Text style={[styles.timeItemText, selected && styles.timeItemTextSelected]}>{hour}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={styles.timeColumn}>
+                <ScrollView
+                  ref={minuteRef}
+                  snapToInterval={TIME_ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.timeColumnContent}
+                  onMomentumScrollEnd={(e) => onMinuteScrollEnd(e.nativeEvent.contentOffset.y)}
+                >
+                  {MINUTES.map((minute) => {
+                    const selected = selectedMinute === minute;
+                    return (
+                      <TouchableOpacity
+                        key={minute}
+                        style={[styles.timeItem, selected && styles.timeItemSelected]}
+                        onPress={() => {
+                          setSelectedMinute(minute);
+                          const idx = MINUTES.findIndex((item) => item === minute);
+                          minuteRef.current?.scrollTo({ y: idx * TIME_ITEM_HEIGHT, animated: true });
+                        }}
+                      >
+                        <Text style={[styles.timeItemText, selected && styles.timeItemTextSelected]}>{minute}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={styles.timeColumn}>
+                <ScrollView
+                  ref={periodRef}
+                  snapToInterval={TIME_ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.timeColumnContent}
+                  onMomentumScrollEnd={(e) => onPeriodScrollEnd(e.nativeEvent.contentOffset.y)}
+                >
+                  {PERIODS.map((period) => {
+                    const selected = selectedPeriod === period;
+                    return (
+                      <TouchableOpacity
+                        key={period}
+                        style={[styles.timeItem, selected && styles.timeItemSelected]}
+                        onPress={() => {
+                          setSelectedPeriod(period);
+                          const idx = PERIODS.findIndex((item) => item === period);
+                          periodRef.current?.scrollTo({ y: idx * TIME_ITEM_HEIGHT, animated: true });
+                        }}
+                      >
+                        <Text style={[styles.timeItemText, selected && styles.timeItemTextSelected]}>{period}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.timeConfirmBtn}
+              activeOpacity={0.9}
+              onPress={() => {
+                onChange(`${selectedHour}:${selectedMinute} ${selectedPeriod}`);
+                setOpen(false);
+              }}
+            >
+              <Text style={styles.timeConfirmText}>Set Reminder</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </View>
@@ -166,14 +376,27 @@ function MedCard({
   canUndoTaken: (id: string) => boolean;
 }) {
   const cfg = STATUS_CONFIG[med.status];
-  const scheduleSummary = formatMedicationScheduleSummary(med.frequency, med.times?.length ? med.times : [med.time || '9:00 AM']);
+  const scheduleSummary = formatMedicationScheduleSummary(
+    med.frequency,
+    med.times?.length ? med.times.filter((t): t is string => t !== undefined) : [med.time || '9:00 AM'],
+  );
   return (
     <View style={[styles.medCardCompact, med.status === 'taken' && styles.medCardTaken]}>
       <View style={[styles.medLeftCompact, { borderLeftColor: med.color }]}>
         <Text style={[styles.medNameCompact, med.status === 'taken' && styles.textDim]} numberOfLines={1}>
           {med.name}
         </Text>
+        {/** Show dose label if present */}
+        {(med as any).doseLabel && (
+          <Text style={styles.doseLabelText}>{(med as any).doseLabel} • {med.time}</Text>
+        )}
         <Text style={styles.medMetaCompact}>{med.dosage} • {scheduleSummary}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+          <Ionicons name="alarm-outline" size={12} color={Colors.primary} />
+          <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: '600' }}>
+            Reminder: {(med as any).reminderTime || med.time}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.medRightCompact}>
@@ -183,7 +406,10 @@ function MedCard({
         </View>
 
         {med.status !== 'taken' ? (
-          <TouchableOpacity style={styles.btnTakenCompact} onPress={() => onMarkTaken(med.id)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.btnTakenCompact} onPress={() => {
+            console.log('Mark Taken button pressed for:', med.id);
+            onMarkTaken(med.id);
+          }} activeOpacity={0.85}>
             <Text style={styles.btnTakenText}>Mark Taken</Text>
           </TouchableOpacity>
         ) : (
@@ -211,6 +437,7 @@ export default function MedicationsScreen() {
   const {
     meds,
     addMedication,
+    updateMedication,
     markTaken,
     markNotTaken,
     snoozeMedication,
@@ -221,12 +448,8 @@ export default function MedicationsScreen() {
     loading,
   } = useMedications();
   const { autoSaveAfterUpdate } = useAutoSaveWeeklyReport();
-  const {
-    addMedicine: addProfileMedicine,
-    removeMedicine: removeProfileMedicine,
-    updateMedicine: updateProfileMedicine,
-    loading: profileMedicinesLoading,
-  } = useMedicines();
+  const { loading: profileMedicinesLoading } = useMedicines();
+  const { user } = useAuth();
   const { profile, saveProfile, loading: profileLoading } = useUserProfile();
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<MedStatus | 'all'>('all');
@@ -246,9 +469,14 @@ export default function MedicationsScreen() {
   const [newDosage, setNewDosage] = useState('');
   const [newFrequency, setNewFrequency] = useState('');
   const [newTimeSlots, setNewTimeSlots] = useState<string[]>(getDefaultTimeSlots('Once a day'));
+  const [reminderTimes, setReminderTimes] = useState<string[]>(['09:00 AM']);
   const [newNotes, setNewNotes] = useState('');
   const [newDurationDays, setNewDurationDays] = useState('');
   const [selectedColor, setSelectedColor] = useState(PILL_COLORS[0]);
+
+  React.useEffect(() => {
+    setNewTimeSlots(reminderTimes.map((time) => normalizeDisplayTime(time)));
+  }, [reminderTimes]);
 
   const swipeDownResponder = React.useMemo(
     () =>
@@ -272,6 +500,49 @@ export default function MedicationsScreen() {
 
   const filtered = filter === 'all' ? meds : meds.filter((m) => m.status === filter);
 
+  const expandedMeds = React.useMemo(() => {
+    const todayKey = getLocalDateKey();
+    const todayLog = recentMedicineLogs.find((d) => d.date === todayKey);
+    return filtered.flatMap((med) => {
+      // single-dose medicine: return with status from today's entry if present
+      if (!med.times || med.times.length <= 1) {
+        const entry = todayLog?.entries.find((e) => e.medicineId === med.id && e.doseIndex === 0);
+        const status = entry
+          ? entry.status === 'taken'
+            ? 'taken'
+            : entry.status === 'not_taken'
+            ? 'missed'
+            : entry.status === 'snoozed'
+            ? 'skipped'
+            : 'upcoming'
+          : med.status;
+        return [{ ...med, status } as Medication];
+      }
+
+      return med.times.map((time, index) => {
+        const entry = todayLog?.entries.find((e) => e.medicineId === med.id && e.doseIndex === index);
+        const status = entry
+          ? entry.status === 'taken'
+            ? 'taken'
+            : entry.status === 'not_taken'
+            ? 'missed'
+            : entry.status === 'snoozed'
+            ? 'skipped'
+            : 'upcoming'
+          : 'upcoming';
+        return ({
+          ...med,
+          id: `${med.id}:${index}`,
+          originalId: med.id,
+          time,
+          doseLabel: `Dose ${index + 1}`,
+          doseIndex: index,
+          status,
+        } as any);
+      });
+    });
+  }, [filtered]);
+
   const effectiveSelectedLogDate = React.useMemo(() => {
     if (recentMedicineLogs.length === 0) return '';
     if (selectedLogDate && recentMedicineLogs.some((day) => day.date === selectedLogDate)) {
@@ -288,6 +559,7 @@ export default function MedicationsScreen() {
     setNewDosage('');
     setNewFrequency('');
     setNewTimeSlots(getDefaultTimeSlots('Once a day'));
+    setReminderTimes(['09:00 AM']);
     setNewNotes('');
     setNewDurationDays('');
     setSelectedColor(PILL_COLORS[0]);
@@ -299,7 +571,12 @@ export default function MedicationsScreen() {
     setNewName(med.name);
     setNewDosage(med.dosage);
     setNewFrequency(med.frequency === 'twice-daily' ? 'Twice a day' : med.frequency === 'weekly' ? 'Weekly' : med.frequency === 'as-needed' ? 'As needed' : 'Once a day');
-    setNewTimeSlots(normalizeTimeSlots(med.times?.length ? med.times : [med.time], med.frequency));
+    const existingTimes = normalizeTimeSlots(
+      med.times?.length ? med.times.filter((t): t is string => t !== undefined) : [med.time || '9:00 AM'],
+      med.frequency,
+    );
+    setReminderTimes(existingTimes.map((time) => normalizeDisplayTime(time)));
+    setNewTimeSlots(existingTimes);
     setNewNotes(med.instructions || med.purpose || '');
     setNewDurationDays(med.durationDays ? String(med.durationDays) : '');
     setSelectedColor(med.color);
@@ -311,36 +588,39 @@ export default function MedicationsScreen() {
     setEditingMedication(null);
   }
 
-  function handleMarkTaken(id: string) {
-    markTaken(id);
-    // Auto-save weekly report after medicine status changes
+  function handleMarkTaken(id: string, doseIndex: number = 0) {
+    console.log('handleMarkTaken called with id:', id, 'doseIndex:', doseIndex);
+    markTaken(id, doseIndex);
     autoSaveAfterUpdate();
   }
 
   function handleMarkNotTaken(id: string) {
-    markNotTaken(id);
+    const med = expandedMeds.find((m) => m.id === id);
+    const doseIndex = (med as any)?.doseIndex ?? 0;
+    markNotTaken(id, doseIndex);
     // Auto-save weekly report after medicine status changes
     autoSaveAfterUpdate();
   }
 
   function handleSnooze(id: string) {
-    snoozeMedication(id);
+    const med = expandedMeds.find((m) => m.id === id);
+    const doseIndex = (med as any)?.doseIndex ?? 0;
+    snoozeMedication(id, doseIndex);
     // Auto-save weekly report after medicine status changes
     autoSaveAfterUpdate();
   }
 
   function handleUndo(id: string) {
-    undoTaken(id);
+    const med = expandedMeds.find((m) => m.id === id);
+    const doseIndex = (med as any)?.doseIndex ?? 0;
+    undoTaken(id, doseIndex);
     // Auto-save weekly report after medicine status changes
     autoSaveAfterUpdate();
   }
 
   async function handleDelete(id: string) {
     try {
-      const nextProfileMedicines = (profile?.medicines ?? []).filter((medicine) => medicine.id !== id);
       await deleteMed(id);
-      await removeProfileMedicine(id);
-      await saveProfile({ medicines: nextProfileMedicines });
     } catch (error) {
       console.error('Delete medicine failed:', error);
       Alert.alert('Delete failed', 'Could not remove medicine right now. Please try again.');
@@ -363,8 +643,15 @@ export default function MedicationsScreen() {
   }
 
   async function handleAddMed() {
-    if (!newName.trim() || !newDosage.trim() || !newFrequency.trim() || newTimeSlots.length === 0) {
-      Alert.alert('Missing Info', 'Please fill medicine name, dosage, frequency, and time slots.');
+    if (!newName.trim() || !newDosage.trim() || !newFrequency.trim()) {
+      Alert.alert('Missing Info',
+        'Please fill medicine name, dosage, and frequency.');
+      return;
+    }
+
+    const uid = user?.uid;
+    if (!uid) {
+      Alert.alert('Not signed in', 'Please sign in to add medicines.');
       return;
     }
 
@@ -372,96 +659,40 @@ export default function MedicationsScreen() {
     const dosage = newDosage.trim();
     const frequencyLabel = newFrequency.trim();
     const notes = newNotes.trim();
-    const durationDays = parseDurationDays(newDurationDays);
-    const selectedTimes = normalizeTimeSlots(newTimeSlots, frequencyLabel);
-    const reminderTime = toReminderTime(selectedTimes[0]);
-    const createdAt = new Date().toISOString();
-    const expiresAt = durationDays
-      ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString()
-      : undefined;
+    const duration = parseDurationDays(newDurationDays);
 
-    const medicineId = editingMedication?.id ?? Date.now().toString();
-    const baseMedicine: Medicine = {
-      id: medicineId,
-      name,
-      dosage,
-      frequency: frequencyLabel,
-      time: selectedTimes[0],
-      times: selectedTimes,
-      notes: notes || undefined,
-      createdAt,
-      durationDays,
-      expiresAt,
-    };
+    const timesToUse = reminderTimes?.length > 0
+      ? reminderTimes
+      : newTimeSlots?.length > 0
+      ? newTimeSlots
+      : ['09:00 AM'];
 
-    const newMed: Medication = {
-      id: medicineId,
-      name,
-      dosage,
-      time: reminderTime,
-      times: selectedTimes,
-      frequency: toTrackerFrequency(frequencyLabel),
-      color: selectedColor,
-      status: editingMedication?.status ?? 'upcoming',
-      purpose: notes || editingMedication?.purpose || 'As prescribed',
-      streak: editingMedication?.streak ?? 0,
-      instructions: notes || undefined,
-      createdAt,
-      durationDays,
-      expiresAt,
-    };
+    console.log('Calling addMedicineToLogs with uid:', uid);
 
     try {
-      const existingMedicines = profile?.medicines ?? [];
-      const nextProfileMedicines = editingMedication
-        ? existingMedicines.map((medicine) => (medicine.id === medicineId ? baseMedicine : medicine))
-        : [...existingMedicines, baseMedicine];
-
-      await saveProfile({ medicines: nextProfileMedicines });
-
-      if (editingMedication) {
-        await updateProfileMedicine({
-          id: medicineId,
-          name,
-          dosage,
-          times: selectedTimes,
-          enabled: true,
-          frequency: frequencyLabel,
-          time: reminderTime,
-          notes: notes || undefined,
-          createdAt,
-          durationDays,
-          expiresAt,
-        });
-        await updateMedication(newMed);
-      } else {
-        await addProfileMedicine({
-          id: medicineId,
-          name,
-          dosage,
-          times: selectedTimes,
-          enabled: true,
-          frequency: frequencyLabel,
-          time: reminderTime,
-          notes: notes || undefined,
-          createdAt,
-          durationDays,
-          expiresAt,
-        });
-        await addMedication(newMed);
-      }
+      await addMedicineToLogs(uid, {
+        name,
+        dosage,
+        times: timesToUse,
+        frequency: frequencyLabel,
+        notes: notes || null,
+        reminderTime: timesToUse[0],
+      }, duration);
 
       setNewName('');
       setNewDosage('');
       setNewFrequency('');
       setNewTimeSlots(getDefaultTimeSlots('Once a day'));
+      setReminderTimes(['09:00 AM']);
       setNewNotes('');
       setNewDurationDays('');
       setSelectedColor(PILL_COLORS[0]);
       closeModal();
+
     } catch (error) {
       console.error('Add medicine failed:', error);
-      Alert.alert('Save failed', 'Could not add medicine right now. Please try again.');
+      Alert.alert('Save failed',
+        'Could not add medicine. Please try again.');
     }
   }
 
@@ -533,15 +764,18 @@ export default function MedicationsScreen() {
             <Text style={styles.emptyText}>No {filter !== 'all' ? filter : ''} medications</Text>
           </View>
         )}
-        {filtered.map((med) => (
+        {expandedMeds.map((med) => (
           <MedCard
             key={med.id}
             med={med}
             onEdit={openEditModal}
-            onMarkTaken={handleMarkTaken}
+            onMarkTaken={(id) => {
+              console.log('MedCard onMarkTaken pressed, id:', id, 'med.id:', med.id, 'med.originalId:', med.originalId);
+              handleMarkTaken(med.id, (med as any).doseIndex ?? 0);
+            }}
             onMarkNotTaken={handleMarkNotTaken}
             onSnooze={handleSnooze}
-            onDelete={handleDelete}
+            onDelete={(id) => handleDelete((med as any).originalId ?? id)}
             onUndo={handleUndo}
             canUndoTaken={canUndoTaken}
           />
@@ -654,15 +888,83 @@ export default function MedicationsScreen() {
                 label="Frequency *"
                 value={newFrequency}
                 options={FREQUENCY_OPTIONS}
-                onSelect={setNewFrequency}
+                onSelect={(value) => {
+                  setNewFrequency(value);
+                  setReminderTimes(getReminderDefaultsByFrequency(value));
+                }}
                 placeholder="Select frequency"
               />
 
-              <MedicineTimeSlotPicker
-                frequency={newFrequency}
-                selectedTimes={newTimeSlots}
-                onChange={setNewTimeSlots}
-              />
+              {(newFrequency === 'Once a day' || !newFrequency || !['Twice a day', 'Three times a day'].includes(newFrequency)) && (
+                <AlarmTimePicker
+                  label="Reminder Time"
+                  value={reminderTimes[0] || '09:00 AM'}
+                  onChange={(time) => setReminderTimes([normalizeDisplayTime(time)])}
+                />
+              )}
+
+              {newFrequency === 'Twice a day' && (
+                <>
+                  <AlarmTimePicker
+                    label="Morning Dose Time"
+                    value={reminderTimes[0] || '09:00 AM'}
+                    onChange={(time) =>
+                      setReminderTimes((prev) => [
+                        normalizeDisplayTime(time),
+                        normalizeDisplayTime(prev[1] || '06:00 PM'),
+                      ])
+                    }
+                  />
+                  <AlarmTimePicker
+                    label="Evening Dose Time"
+                    value={reminderTimes[1] || '06:00 PM'}
+                    onChange={(time) =>
+                      setReminderTimes((prev) => [
+                        normalizeDisplayTime(prev[0] || '09:00 AM'),
+                        normalizeDisplayTime(time),
+                      ])
+                    }
+                  />
+                </>
+              )}
+
+              {newFrequency === 'Three times a day' && (
+                <>
+                  <AlarmTimePicker
+                    label="Morning Dose Time"
+                    value={reminderTimes[0] || '08:00 AM'}
+                    onChange={(time) =>
+                      setReminderTimes((prev) => [
+                        normalizeDisplayTime(time),
+                        normalizeDisplayTime(prev[1] || '01:00 PM'),
+                        normalizeDisplayTime(prev[2] || '08:00 PM'),
+                      ])
+                    }
+                  />
+                  <AlarmTimePicker
+                    label="Afternoon Dose Time"
+                    value={reminderTimes[1] || '01:00 PM'}
+                    onChange={(time) =>
+                      setReminderTimes((prev) => [
+                        normalizeDisplayTime(prev[0] || '08:00 AM'),
+                        normalizeDisplayTime(time),
+                        normalizeDisplayTime(prev[2] || '08:00 PM'),
+                      ])
+                    }
+                  />
+                  <AlarmTimePicker
+                    label="Night Dose Time"
+                    value={reminderTimes[2] || '08:00 PM'}
+                    onChange={(time) =>
+                      setReminderTimes((prev) => [
+                        normalizeDisplayTime(prev[0] || '08:00 AM'),
+                        normalizeDisplayTime(prev[1] || '01:00 PM'),
+                        normalizeDisplayTime(time),
+                      ])
+                    }
+                  />
+                </>
+              )}
 
               <Text style={styles.fieldLabel}>Notes / Purpose</Text>
               <TextInput
@@ -857,13 +1159,18 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 4,
   },
+  doseLabelText: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+    marginTop: 2,
+  },
   medRightCompact: { alignItems: 'flex-end', marginLeft: 8 },
   statusBadgeCompact: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: Radii.full },
   statusTextCompact: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
   btnTakenCompact: { backgroundColor: Colors.primary, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radii.full, marginTop: 8 },
   btnUndoCompact: { backgroundColor: Colors.successLight, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radii.full, marginTop: 8 },
-  btnTakenText: { color: '#fff', fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
-  btnUndoText: { color: Colors.success, fontSize: FontSizes.xs, fontWeight: FontWeights.bold },
+  
   iconRowCompact: { flexDirection: 'row', marginTop: 8 },
   iconBtn: { marginLeft: 8, padding: 6 },
   medStrip: { width: 5 },
@@ -1223,5 +1530,99 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
+  },
+  timePickerModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  timePickerSheet: {
+    backgroundColor: Colors.cardBg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  timePickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  timeColumns: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    height: 144,
+    position: 'relative',
+  },
+  timeSelectionZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 48,
+    height: 48,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+  },
+  timeColumn: {
+    width: 72,
+    height: 144,
+    overflow: 'hidden',
+  },
+  timeColumnContent: {
+    paddingVertical: 48,
+  },
+  timeItem: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  timeItemSelected: {
+    backgroundColor: Colors.primary + '22',
+  },
+  timeItemText: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  timeItemTextSelected: {
+    color: Colors.primary,
+    fontWeight: '800',
+    fontSize: 26,
+  },
+  timeConfirmBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  timeConfirmText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  timeDisplay: {
+    backgroundColor: Colors.inputBg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  timeDisplayText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 1,
   },
 });

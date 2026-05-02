@@ -9,8 +9,8 @@ export interface Medication {
   id: string;
   name: string;
   dosage: string;
-  time: string; // "09:00 AM"
-  times?: string[];
+  time?: string; // "09:00 AM"
+  times?: (string | undefined)[];
   frequency: MedFrequency;
   color: string; // pill color for visual
   status: MedStatus;
@@ -20,6 +20,10 @@ export interface Medication {
   createdAt?: string;
   durationDays?: number;
   expiresAt?: string;
+  originalId?: string;
+  doseIndex?: number;
+  doseLabel?: string | null;
+  reminderTime?: string;
 }
 
 export interface UserProfile {

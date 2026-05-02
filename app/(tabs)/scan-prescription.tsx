@@ -1,8 +1,10 @@
 import ScanLogo from '@/components/icons/ScanLogo';
 import { Medication } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
+import { useAuth } from '@/hooks/useAuth';
 import { useMedications } from '@/hooks/useMedications';
 import { ParsedMed, parsePrescription } from '@/lib/ai/parsePrescription';
+import { getLocalDateKey, writeMedicineLogs } from '@/lib/medicine-logs';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -21,6 +23,7 @@ export default function ScanPrescriptionScreen() {
   const [ocrText, setOcrText] = useState('');
   const [parsed, setParsed] = useState<ParsedMed[]>([]);
   const { addMedication } = useMedications();
+  const { user } = useAuth();
 
   const params: any = useLocalSearchParams();
 
@@ -108,6 +111,9 @@ export default function ScanPrescriptionScreen() {
         streak: 0,
       };
       await addMedication(med);
+      if (user?.uid) {
+        await writeMedicineLogs(user.uid, med as any, [getLocalDateKey()]);
+      }
       created.push(med);
     }
 
