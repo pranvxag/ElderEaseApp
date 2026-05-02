@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '@/constants/api';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -38,8 +39,8 @@ export function getApiProxyBaseUrl(): string {
   }
 
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
+    return API_BASE_URL;
   }
 
-  return 'http://localhost:3000';
+  return API_BASE_URL;
 }
