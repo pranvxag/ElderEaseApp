@@ -7,7 +7,20 @@ import { doc, setDoc } from 'firebase/firestore';
 import { useCallback, useMemo } from 'react';
 
 function getDateKey(date = new Date()): string {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getDocId(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day}-${hh}${mm}${ss}`;
 }
 
 function formatTime(timestamp: string): string {
@@ -78,7 +91,7 @@ export function useHealthData() {
       const timestamp = payload.timestamp ?? new Date().toISOString();
       const time = payload.time ?? formatTime(timestamp);
       const reading: SugarReading = { level: payload.level, time, timestamp };
-      const dateKey = getDateKey(new Date(timestamp));
+      const dateKey = getDateKey();
 
       setDailyLogs((prev) => {
         const current = prev[dateKey] ?? { date: dateKey };
@@ -94,15 +107,15 @@ export function useHealthData() {
 
       if (!user || !hasFirebaseConfig) return;
 
-      const ref = doc(db, 'users', user.uid, 'sugarlogs', dateKey);
-      await setDoc(
-        ref,
-        {
-          date: dateKey,
-          [payload.type]: reading,
-        },
-        { merge: true }
-      );
+      const docId = getDocId();
+      const ref = doc(db, 'users', user.uid, 'sugarlogs', docId);
+      await setDoc(ref, {
+        date: dateKey,
+        type: payload.type,
+        level: payload.level,
+        time,
+        timestamp,
+      });
     },
     [setDailyLogs, user]
   );

@@ -11,7 +11,7 @@ import { getRecentMedicineLogDates, getRecentMedicineLogs, MedicineLogDay } from
 import { getWeekEndDate, getWeekStartDate } from '@/lib/week-utils';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -38,20 +38,20 @@ async function getRecentSugarLogs(uid: string, days = 7): Promise<SugarLogDay[]>
   const dateKeys = getRecentMedicineLogDates(days);
   const logs = await Promise.all(
     dateKeys.map(async (dateKey) => {
-      const ref = doc(db, 'users', uid, 'sugarlogs', dateKey);
-      const snapshot = await getDoc(ref);
-      if (!snapshot.exists()) {
-        return { date: dateKey } as SugarLogDay;
-      }
-      const data = snapshot.data() as SugarLogDay;
-      return {
-        date: dateKey,
-        fasting: data?.fasting,
-        postFood: data?.postFood,
-        level: data?.level,
-        source: data?.source,
-        timestamp: data?.timestamp,
-      } as SugarLogDay;
+      const ref = collection(db, 'users', uid, 'sugarlogs');
+      const snapshot = await getDocs(query(ref, where('date', '==', dateKey), orderBy('timestamp', 'asc')));
+      const dailyLog: SugarLogDay = { date: dateKey };
+
+      snapshot.forEach((documentSnapshot) => {
+        const data = documentSnapshot.data() as any;
+        if (data.type === 'fasting') {
+          dailyLog.fasting = { level: data.level, time: data.time, timestamp: data.timestamp };
+        } else if (data.type === 'postFood') {
+          dailyLog.postFood = { level: data.level, time: data.time, timestamp: data.timestamp };
+        }
+      });
+
+      return dailyLog;
     })
   );
 
