@@ -16,8 +16,21 @@ let firestoreDb = null;
 
 // Initialize Firebase Admin SDK
 try {
-  const serviceAccountPath = path.resolve(__dirname, '..', process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'firebase-key.json');
-  const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+  let serviceAccount;
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    // Running on Render or any cloud — load from environment variable
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  } else {
+    // Running locally — load from file as before
+    const serviceAccountPath = path.resolve(
+      __dirname,
+      '..',
+      process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'firebase-key.json'
+    );
+    serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+  }
+
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
