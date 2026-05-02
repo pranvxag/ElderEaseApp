@@ -1,22 +1,50 @@
 import { EmergencyContact } from '@/constants/data';
 import { Colors, FontSizes, FontWeights, Radii, Shadows, Spacing } from '@/constants/theme';
+import { useAuth } from '@/hooks/useAuth';
 import { useEmergencyContacts } from '@/hooks/useEmergencyContacts';
 import { useHealthData } from '@/hooks/useHealthData';
+import { useProfile } from '@/hooks/useProfile';
 import { getEmergencyContactSlotLabel } from '@/lib/emergency-contacts';
+import { db } from '@/lib/firebase';
+
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import * as Location from 'expo-location';
+import { Router, router } from 'expo-router';
+import { addDoc, collection } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    Linking,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  Dimensions,
+  Linking,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
+
+function safeAlert(title: string, message: string, buttons?: any[]) {
+  try {
+    // dynamic require to avoid issues in some runtimes
+    const RN = require('react-native');
+    const A = RN && RN.Alert;
+    if (A && typeof A.alert === 'function') {
+      if (buttons) return A.alert(title, message, buttons);
+      return A.alert(title, message);
+    }
+  } catch (e) {
+    // fall through
+  }
+
+  if (typeof window !== 'undefined' && typeof (window as any).alert === 'function') {
+    (window as any).alert(`${title}\n\n${message}`);
+    return;
+  }
+
+  console.warn('ALERT:', title, message);
+}
 
 const { width } = Dimensions.get('window');
 const SOS_BTN_SIZE = Math.min(width * 0.55, 240);
@@ -62,9 +90,12 @@ export default function EmergencyScreen() {
   const [sosCountdown, setSosCountdown] = useState(5);
   const [sosCancelled, setSosCancelled] = useState(false);
   const { latest } = useHealthData();
+  const [profile] = useProfile();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
 
   // Pulse animation for SOS button
   useEffect(() => {
@@ -100,25 +131,75 @@ export default function EmergencyScreen() {
     setShowSOSModal(false);
   }
 
-  function triggerSOS() {
-    const primary = contacts.find((c) => c.isPrimary);
-    Alert.alert(
-      '🚨 SOS Sent!',
-      `Calling ${primary?.name ?? 'your emergency contact'}...\n\nSMS has been sent to all emergency contacts with your location.`,
-      [
-        {
-          text: 'Call Now',
-          onPress: () => {
-            if (primary) Linking.openURL(`tel:${primary.phone.replace(/\s/g, '')}`);
-          },
-        },
-        { text: 'OK', style: 'cancel' },
-      ]
-    );
+  async function triggerSOS() {
+    if (!user || !user.uid) {
+      Alert.alert('Not signed in', 'Please sign in to trigger emergency alerts.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Get location permission and coordinates
+      let location: { latitude: number; longitude: number } | null = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          location = {
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude,
+          };
+        }
+      } catch (locationError) {
+        console.warn('Location permission denied or location fetch failed:', locationError);
+        // Continue without location
+      }
+
+      // Get user profile data
+      const userName = profile?.name || user.displayName || 'User';
+      const userPhone = profile?.caregiverPhone || '';
+
+      // Save to Firestore
+      const now = new Date();
+      const emergencyEvent = {
+        timestamp: now.toISOString(),
+        date: now.toLocaleDateString('en-IN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }),
+        time: now.toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        }),
+        userName,
+        userPhone,
+        location: location || null,
+        status: 'triggered',
+        callStatus: 'pending',
+        contactsNotified: [],
+      };
+
+      const emergencyRef = collection(db, 'users', user.uid, 'emergencyEvents');
+      await addDoc(emergencyRef, emergencyEvent);
+
+      // Show success alert
+      Alert.alert('Emergency Alert Sent!', 'Help is on the way.');
+    } catch (e) {
+      console.error('triggerSOS error', e);
+      Alert.alert('Failed to Send Alert', 'Please call manually.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleCallContact(contact: EmergencyContact) {
-    Alert.alert(`Call ${contact.name}?`, `${contact.relation} — ${contact.phone}`, [
+    safeAlert(`Call ${contact.name}?`, `${contact.relation} — ${contact.phone}`, [
       {
         text: 'Call',
         onPress: () => Linking.openURL(`tel:${contact.phone.replace(/\s/g, '')}`),
@@ -169,9 +250,10 @@ export default function EmergencyScreen() {
             <View style={styles.sosRingMid}>
               <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
                 <TouchableOpacity
-                  style={styles.sosBtn}
+                  style={[styles.sosBtn, loading && styles.sosBtnDisabled]}
                   onPress={handleSOSPress}
                   activeOpacity={0.9}
+                  disabled={loading}
                 >
                   <Ionicons name="alert-circle" size={48} color="#fff" />
                   <Text style={styles.sosBtnText}>HELP</Text>
@@ -356,6 +438,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 20,
     elevation: 12,
+  },
+  sosBtnDisabled: {
+    opacity: 0.6,
   },
   sosBtnText: {
     fontSize: FontSizes.xxl,
@@ -693,3 +778,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
 });
+
+function triggerEmergency(uid: string, router: Router, setLoading: React.Dispatch<React.SetStateAction<boolean>>) {
+  throw new Error('Function not implemented.');
+}
