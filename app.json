@@ -4,7 +4,7 @@
     "slug": "ElderEaseApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/new/icon.png",
+    "icon": "./assets/new/icon.png",
     "scheme": "elderease",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -15,16 +15,16 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/new/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/new/android-icon-background.png",
-        "monochromeImage": "./assets/images/new/android-icon-monochrome.png"
+        "foregroundImage": "./assets/new/android-icon-foreground.png",
+        "backgroundImage": "./assets/new/android-icon-background.png",
+        "monochromeImage": "./assets/new/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.pranavgale.elderease"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/new/favicon.png"
+      "favicon": "./assets/new/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -43,7 +43,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/android-icon-monochrome.png",
+          "icon": "./assets/new/android-icon-monochrome.png",
           "color": "#1A7A6E"
         }
       ],
