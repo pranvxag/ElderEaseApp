@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEmergencyContacts } from '@/hooks/useEmergencyContacts';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { getEmergencyContactSlotLabel } from '@/lib/emergency-contacts';
 import { db } from '@/lib/firebase';
 
@@ -91,6 +92,7 @@ export default function EmergencyScreen() {
   const [sosCancelled, setSosCancelled] = useState(false);
   const { latest } = useHealthData();
   const [profile] = useProfile();
+  const { profile: userProfile } = useUserProfile();
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -160,7 +162,7 @@ export default function EmergencyScreen() {
 
       // Get user profile data
       const userName = profile?.name || user.displayName || 'User';
-      const userPhone = profile?.caregiverPhone || '';
+      const userPhone = userProfile?.phoneNumber || user.phoneNumber || '';
 
       // Save to Firestore
       const now = new Date();
@@ -179,6 +181,7 @@ export default function EmergencyScreen() {
         }),
         userName,
         userPhone,
+        userId: user.uid,
         location: location || null,
         status: 'triggered',
         callStatus: 'pending',
