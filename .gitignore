@@ -3,6 +3,7 @@
 credentials/
 credentials/android/keystore.jks
 firebase-key.json
+.expo/
 
 # iOS
 ios/.xcode.env
