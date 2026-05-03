@@ -246,8 +246,8 @@ const SERVER_URL = process.env.SERVER_URL || `http://localhost:${port}`;
 setInterval(async () => {
   try {
     await fetch(`${SERVER_URL}/health`);
-    console.log(`💓 Self-ping OK at ${new Date().toLocaleTimeString('en-IN')}`);
+    console.log(`💓 Self-ping OK at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
   } catch (err) {
-    console.warn(`💔 Self-ping failed at ${new Date().toLocaleTimeString('en-IN')}:`, err.message);
+    console.warn(`💔 Self-ping failed at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}:`, err.message);
   }
 }, 14 * 60 * 1000);
