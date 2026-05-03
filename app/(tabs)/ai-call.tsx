@@ -204,13 +204,14 @@ async function synthesizeSpeech(text: string, langCode: string): Promise<string 
 // ─── Google Cloud STT ─────────────────────────────────────────────────────────
 async function transcribeSpeech(audioBase64: string, langCode: string): Promise<string> {
   const url = `${PROXY_BASE}/api/stt`;
+  const encoding = Platform.OS === 'android' ? 'AMR_WB' : 'LINEAR16';
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         config: {
-          encoding: 'AMR_WB',
+          encoding,
           sampleRateHertz: 16000,
           languageCode: langCode,
           alternativeLanguageCodes: ['en-IN', 'hi-IN', 'mr-IN'],
@@ -315,7 +316,7 @@ const td = StyleSheet.create({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AICallScreen() {
-  const { addEntry }                = useHealthData();
+  const { addEntry, saveDailyReading } = useHealthData();
   const { upcomingMeds, markTaken } = useMedications();
   const { user }                    = useAuth();
   const { profile }                 = useUserProfile();
@@ -346,7 +347,7 @@ export default function AICallScreen() {
   const scrollRef     = useRef<ScrollView>(null);
   const chatHistory   = useRef<{ role: 'system' | 'user' | 'assistant'; content: string }[]>([]);
   const recorder      = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const player         = useAudioPlayer(audioToPlay);
+  const player         = useAudioPlayer(null);
 
   // Animations
   const ring1      = useRef(new Animated.Value(0)).current;
@@ -368,6 +369,7 @@ export default function AICallScreen() {
 
   useEffect(() => {
     if (!audioToPlay) return;
+    player.replace(audioToPlay);
     player.play();
   }, [audioToPlay, player]);
 
@@ -416,7 +418,27 @@ export default function AICallScreen() {
   async function startRecording() {
     try {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
+      await recorder.prepareToRecordAsync({
+        android: {
+          extension: '.amr',
+          outputFormat: 'amrwb',
+          audioEncoder: 'amr_wb',
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 23850,
+        },
+        ios: {
+          extension: '.wav',
+          audioQuality: 'high',
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+        web: {},
+      } as any);
       recorder.record();
       setIsRecording(true);
       setPendingVoice('');
@@ -553,7 +575,7 @@ export default function AICallScreen() {
       chatHistory.current.push({ role: 'assistant', content: agentReply });
       setMessages(prev => [...prev, { role: 'agent', text: cleanReply }]);
       await speak(agentReply);
-      if (/bye|goodbye|take care|धन्यवाद|ठीक है|नमस्ते|धन्यवाद|निरोगी राहा/i.test(cleanReply)) {
+      if (/\b(goodbye|bye bye|take care|धन्यवाद आपका|निरोगी राहा|नमस्कार घ्या)\b/i.test(cleanReply)) {
         setTimeout(() => endCall(), 3500);
       }
     } catch (_) {
@@ -571,10 +593,9 @@ export default function AICallScreen() {
       Alert.alert('No reading detected', 'Tell the agent your blood sugar number during the call.');
       return;
     }
-    const transcript = messages.map(m => `${m.role === 'agent' ? 'Agent' : 'You'}: ${m.text}`).join('\n');
-    addEntry({ value: detectedSugar, unit: 'mg/dL', source: 'ai-call', transcript });
+    saveDailyReading({ type: 'fasting', level: detectedSugar });
     Alert.alert('Saved!', `Blood sugar ${detectedSugar} mg/dL saved.`, [
-      { text: 'OK', onPress: () => router.replace('/(tabs)/emergency') },
+      { text: 'OK', onPress: () => router.replace('/(tabs)/scan') },
     ]);
   }
 
@@ -927,7 +948,7 @@ export default function AICallScreen() {
               <Text style={s.endCallText}>End Call</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={s.ctrlPill} onPress={() => {}}>
+            <TouchableOpacity style={s.ctrlPill} onPress={() => Alert.alert('Language', 'Change language preference in your Profile settings.')}>
               <Text style={s.ctrlEmoji}>🌐</Text>
               <Text style={s.ctrlLabel}>
                 {preferredLang === 'hi' ? 'हिंदी' : preferredLang === 'mr' ? 'मराठी' : 'English'}

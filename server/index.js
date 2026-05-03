@@ -128,6 +128,7 @@ function toGroqMessages(body) {
 
 async function handleGroqProxy(req, res) {
   if (!GROQ_KEY) return res.status(500).json({ error: 'Server missing EXPO_PUBLIC_GROQ_API_KEY' });
+  console.log(`🤖 Groq request: model=${req.body?.model || GROQ_MODEL}, messages=${toGroqMessages(req.body || {}).length}`);
   try {
     const url = 'https://api.groq.com/openai/v1/chat/completions';
     const body = req.body || {};
@@ -158,6 +159,7 @@ app.post('/api/gemini', handleGroqProxy);
 
 app.post('/api/tts', async (req, res) => {
   if (!SPEECH_KEY) return res.status(500).json({ error: 'Server missing EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY' });
+  console.log(`🔊 TTS request: lang=${req.body?.voice?.languageCode || 'unknown'}`);
   try {
     const url = 'https://texttospeech.googleapis.com/v1/text:synthesize';
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body) };
@@ -171,6 +173,7 @@ app.post('/api/tts', async (req, res) => {
 
 app.post('/api/stt', async (req, res) => {
   if (!SPEECH_KEY) return res.status(500).json({ error: 'Server missing EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY' });
+  console.log(`🎤 STT request: lang=${req.body?.config?.languageCode || 'unknown'}`);
   try {
     const url = 'https://speech.googleapis.com/v1/speech:recognize';
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body) };
@@ -217,7 +220,7 @@ app.post('/call/sugar-response', async (req, res) => {
       { merge: true }
     );
 
-    console.log(`Saved sugar reading: uid=${uid}, date=${dateKey}, level=${sugarLevel}`);
+    console.log(`🩸 Sugar saved: uid=${uid}, level=${sugarLevel} mg/dL, date=${dateKey}`);
     return res.status(200).json({
       success: true,
       date: dateKey,
@@ -232,5 +235,19 @@ app.post('/call/sugar-response', async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`ElderEase API proxy listening on port ${port}`);
+  console.log(`\n🚀 ElderEase server running on port ${port}`);
+  console.log(`📡 Server URL: ${process.env.SERVER_URL || 'http://localhost:' + port}`);
+  console.log(`🔑 GROQ key: ${GROQ_KEY ? '✅ loaded' : '❌ MISSING'}`);
+  console.log(`🔑 Speech key: ${SPEECH_KEY ? '✅ loaded' : '❌ MISSING'}`);
+  console.log(`🔥 Firebase: ${firestoreDb ? '✅ connected' : '❌ not connected'}`);
 });
+
+const SERVER_URL = process.env.SERVER_URL || `http://localhost:${port}`;
+setInterval(async () => {
+  try {
+    await fetch(`${SERVER_URL}/health`);
+    console.log(`💓 Self-ping OK at ${new Date().toLocaleTimeString('en-IN')}`);
+  } catch (err) {
+    console.warn(`💔 Self-ping failed at ${new Date().toLocaleTimeString('en-IN')}:`, err.message);
+  }
+}, 14 * 60 * 1000);
